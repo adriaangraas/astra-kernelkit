@@ -14,7 +14,6 @@ from builtins import object
 from typing import Any
 
 import numpy as np
-import cupy as cp
 from odl.discr import DiscreteLp, DiscreteLpElement
 from odl.tomo.backends.astra_setup import astra_conebeam_2d_geom_to_vec
 from odl.tomo.geometry import (
@@ -186,27 +185,22 @@ class AstrapyProjectorImpl(object):
         if (isinstance(self.geometry, DivergentBeamGeometry) and
                 isinstance(self.geometry.detector, (Flat1dDetector, Flat2dDetector)) and
                 self.geometry.ndim == 2):
-
+            fp = kernel.FanProjection()
             # wrap input vol_data
             volume = VolumeAdapter(vol_data)
 
             # todo should be a geometry
             angles = astrapy_fanflat_geometry_to_angles(self.geometry)
-
-            # sino = astrapy.Sinogram(
-            #     cp.empty((len(angles), self.geometry.detector.size), dtype=kernel.Kernel.FLOAT_DTYPE),
-            #     (-1,), (1,)) # @TODO fix this, write wrapper
             sino = SinogramAdapter(self.geometry)
 
             # @todo test for 1D and 2D detectors
-            fp = kernel.FanProjection()
             fp(volume, sino, angles)
         else:
             raise NotImplementedError('Unknown Astrapy geometry type {!r}'.format(self.geometry))
 
         # Copy result to host
         if self.geometry.ndim == 2:
-            out[:] = cp.asnumpy(sino.data)  # @todo issue #2
+            out[:] = sino.data_numpy  # @todo issue #2
         elif self.geometry.ndim == 3:
             raise NotImplementedError()
 
