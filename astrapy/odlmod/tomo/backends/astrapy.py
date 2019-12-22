@@ -100,7 +100,7 @@ class SinogramAdapter(astrapy.Sinogram):
 
             data = proj_data.asarray()
         else:
-            data = astrapy.empty_gpu(geometry.grid.shape, dtype=np.float32)
+            data = astrapy.empty_gpu(geometry.grid.shape, dtype=astrapy.kernel.Kernel.FLOAT_DTYPE)
 
         proj_min = geometry.det_partition.min_pt
         proj_max = geometry.det_partition.max_pt
@@ -115,7 +115,7 @@ class SinogramAdapter(astrapy.Sinogram):
 
     @property
     def pixel_volume(self) -> float:
-        return self.geometry.partition.cell_volume
+        return self.geometry.det_partition.cell_volume
 
 
 def astrapy_fanflat_geometry_to_angles(geometry):
