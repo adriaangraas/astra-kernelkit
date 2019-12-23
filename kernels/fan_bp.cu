@@ -25,10 +25,6 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 extern "C" {
-    static const unsigned int g_anglesPerBlock = 16;
-    static const unsigned int g_blockSliceSize = 32;
-    static const unsigned int g_blockSlices = 16;
-
     /**
      * Backprojection for fan geometry with flat detector
      * Note this is just a PoC and not likely to hit the performance of ASTRA Toolbox.
@@ -52,13 +48,13 @@ extern "C" {
         const int relX = threadIdx.x;
         const int relY = threadIdx.y;
 
-        int endAngle = startAngle + g_anglesPerBlock;
+        int endAngle = startAngle + {{ angles_per_block}};
 
         if (endAngle > nrAngles)
             endAngle = nrAngles;
 
-        const int blockX = blockIdx.x * g_blockSlices + relX;
-        const int blockY = blockIdx.y * g_blockSliceSize + relY;
+        const int blockX = blockIdx.x * {{ block_slices }} + relX;
+        const int blockY = blockIdx.y * {{ block_slice_size }} + relY;
 
         if (blockX >= volWidth || blockY >= volHeight)
             return;

@@ -5,6 +5,7 @@ import numpy as np
 import cupy.cuda.texture as txt
 from cupy.cuda.runtime import cudaChannelFormatKindFloat, cudaResourceTypeArray, \
     cudaReadModeElementType, cudaAddressModeBorder, cudaFilterModeLinear
+from jinja2 import Template
 
 import astrapy
 
@@ -35,18 +36,31 @@ class Kernel(ABC):
     FLOAT_DTYPE = cp.float32
     SUPPORTED_DTYPES = [cp.float32]
 
-    def __init__(self, path: str, function: str):
-        fan_fp_module = cp.RawModule(Path(path).read_text())
-        self.kernel = fan_fp_module.get_function(function)
+
+def load_jinja2_kernel(path: str, function: str, **kwargs):
+    template = Template(Path(path).read_text())
+    rendered = template.render(**kwargs)
+    module = cp.RawModule(rendered)
+    return module.get_function(function)
 
 
 class FanProjection(Kernel):
     def __init__(self, path: str = "../kernels/fan_fp.cu", function: str = "fan_fp"):
-        super().__init__(path, function)
-
         self.ANGLES_PER_BLOCK = 16
         self.DET_BLOCK_SIZE = 32  # @todo
         self.BLOCK_SLICES = 64  # why o why
+
+        self.horizontal = load_jinja2_kernel(path, function,
+                                             angles_per_block=self.ANGLES_PER_BLOCK,
+                                             det_block_size=self.DET_BLOCK_SIZE,
+                                             block_slices=self.BLOCK_SLICES,
+                                             mode_horizontal=True)
+
+        self.vertical = load_jinja2_kernel(path, function,
+                                           angles_per_block=self.ANGLES_PER_BLOCK,
+                                           det_block_size=self.DET_BLOCK_SIZE,
+                                           block_slices=self.BLOCK_SLICES,
+                                           mode_horizontal=False)
 
     def __call__(self, volume: astrapy.Volume, sino: astrapy.Sinogram, angles,
                  rays_per_pixel: int = 1
@@ -129,7 +143,7 @@ class FanProjection(Kernel):
 
         with stream1:
             for start_slice in range(0, volume_texture.ResDesc.cuArr.width, self.BLOCK_SLICES):
-                self.kernel(
+                self.horizontal(
                     (grid_x, grid_y),
                     (block_x, block_y),
                     (volume_texture,
@@ -142,7 +156,6 @@ class FanProjection(Kernel):
                      rays_per_pixel,
                      volume_texture.ResDesc.cuArr.width,
                      volume_texture.ResDesc.cuArr.height,
-                     cp.bool(True),
                      cp.float32(output_scale)
                      ))
 
@@ -151,7 +164,7 @@ class FanProjection(Kernel):
 
         with stream2:
             for start_slice in range(0, volume_texture.ResDesc.cuArr.height, self.BLOCK_SLICES):
-                self.kernel(
+                self.vertical(
                     (grid_x, grid_y),
                     (block_x, block_y),
                     (volume_texture,
@@ -164,7 +177,6 @@ class FanProjection(Kernel):
                      rays_per_pixel,
                      volume_texture.ResDesc.cuArr.width,
                      volume_texture.ResDesc.cuArr.height,
-                     cp.bool(False),
                      cp.float32(output_scale)
                      ))
 
@@ -194,11 +206,15 @@ class FanBackprojection(Kernel):
             return [self.num_c, self.num_x, self.num_y, self.den_c, self.den_x, self.den_y]
 
     def __init__(self, path: str = "../kernels/fan_bp.cu", function="fan_bp"):
-        super().__init__(path, function)
 
         self.BLOCK_SLICES = 16
         self.BLOCK_SLICE_SIZE = 32
         self.ANGLES_PER_BLOCK = 16
+
+        self.kernel = load_jinja2_kernel(path, function,
+                                         block_slices=self.BLOCK_SLICES,
+                                         block_slice_size=self.BLOCK_SLICE_SIZE,
+                                         angles_per_block=self.ANGLES_PER_BLOCK).kernel
 
     def __call__(self, volume: astrapy.Volume, sino: astrapy.Sinogram, angles) -> astrapy.Volume:
         """Forward projection with fan geometry."""
@@ -302,7 +318,7 @@ class FanBackprojection(Kernel):
         return volume
 
     def _call_chunk(self, volume, proj_texture, params, output_scale: float):
-        assert(len(params) < MAX_ANGLES)
+        assert (len(params) < MAX_ANGLES)
 
         block_x, block_y = self.BLOCK_SLICES, self.BLOCK_SLICE_SIZE
         grid_x = (volume.shape[0] + self.BLOCK_SLICES - 1) // self.BLOCK_SLICES

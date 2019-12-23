@@ -25,18 +25,14 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 extern "C" {
-    static const unsigned int g_anglesPerBlock = 16;
-    static const unsigned int g_detBlockSize = 32;
-    static const unsigned int g_blockSlices = 64;
-
     /**
      * Forward projection for fan geometry with flat detector
      *
      * Adriaan: I'm waiting for C++17 to be supported in CUDA, then I can template bool horizontalMode, and use
-     *          a "constexpr if" on the conditions. Until then I'll accept slower runtimes.
+     *          a "constexpr if" on the conditions. Until then I'll use Jinja templates!
      * Adriaan: Further @todo on this kernel are
      * - pitched memory support is not (yet, or never) in CuPy, how much are we missing out?
-     * - constant memory is in CuPy and we should use it here for the angles
+     * - constant memory is almost in CuPy and we should use it here for the angles
      * - from ASTRA Toolbox: for very small sizes (roughly <=512x128) with few angles (<=180)
      *                       not using an array is more efficient.
      * - supersampling
@@ -53,20 +49,16 @@ extern "C" {
            int raysPerDet,                     // ?
            int volWidth,                       // volume (txt memory) width
            int volHeight,                      // volume (txt memory) height
-           bool modeHorizontal,                // how to compute the ray paths
            float outputScale
            ) {
         const int relDet = threadIdx.x;
         const int relAngle = threadIdx.y;
-        const int angle = startAngle
-                          + blockIdx.x * g_anglesPerBlock
-                          + relAngle;
+        const int angle = startAngle + blockIdx.x * {{ angles_per_block }} + relAngle;
 
         if (angle >= endAngle)
             return;
 
-
-        const int pixel = blockIdx.y * g_detBlockSize + relDet;
+        const int pixel = blockIdx.y * {{ det_block_size }} + relDet;
 
         if (pixel < 0 || pixel >= projDets)
             return;
@@ -81,13 +73,13 @@ extern "C" {
         const float fdx = fabsf(detSX + pixel * detUX + 0.5f - srcX);
         const float fdy = fabsf(detSY + pixel * detUY + 0.5f - srcY);
 
-        if (modeHorizontal) {
-            if (fdy > fdx)
-                return;
-        } else {
-            if (fdy <= fdx)
-                return;
-        }
+        {% if mode_horizontal is sameas true %}
+        if (fdy > fdx)
+            return;
+        {% else %}
+        if (fdy <= fdx)
+            return;
+        {% endif %}
 
         float val = 0.0;
         for (int subT = 0; subT < raysPerDet; ++subT) {
@@ -97,39 +89,41 @@ extern "C" {
 
             // ray: y = alpha * x + beta
             float alpha, beta;
-            if (modeHorizontal) {
-                alpha = (srcY - detY) / (srcX - detX);
-                beta = srcY - alpha * srcX;
-            } else {
-                alpha = (srcX - detX) / (srcY - detY);
-                beta = srcX - alpha * srcY;
-            }
+
+            {% if mode_horizontal is sameas true %}
+            alpha = (srcY - detY) / (srcX - detX);
+            beta = srcY - alpha * srcX;
+            {% else %}
+            alpha = (srcX - detX) / (srcY - detY);
+            beta = srcX - alpha * srcY;
+            {% endif %}
 
             float distCorr = sqrt(alpha * alpha + 1) * outputScale / raysPerDet;
 
             // intersect ray with first slice
             float X, Y;
-            if (modeHorizontal) {
-                Y = -alpha * (startSlice - .5 * volWidth + .5) - beta + .5 * volHeight;
-                X = startSlice + .5;
-            } else {
-                X = -alpha * (startSlice - .5 * volHeight + .5) + beta + .5 * volWidth;
-                Y = startSlice + .5;
-            }
+            {% if mode_horizontal is sameas true %}
+            Y = -alpha * (startSlice - .5 * volWidth + .5) - beta + .5 * volHeight;
+            X = startSlice + .5;
+            {% else %}
+            X = -alpha * (startSlice - .5 * volHeight + .5) + beta + .5 * volWidth;
+            Y = startSlice + .5;
+            {% endif %}
 
-            int endSlice = min(startSlice + g_blockSlices, modeHorizontal ? volWidth : volHeight);
+            int endSlice = min(startSlice + {{ block_slices }},
+                {% if mode_horizontal is sameas true %} volWidth {% else %} volHeight {% endif %});
 
             float V = 0;
             for (int slice = startSlice; slice < endSlice; ++slice) {
                 V += tex2D<float>(volumeTexture, X, Y);
 
-                if (modeHorizontal) {
-                    Y -= alpha;
-                    X += 1;
-                } else {
-                    X -= alpha;
-                    Y += 1;
-                }
+                {% if mode_horizontal is sameas true %}
+                Y -= alpha;
+                X += 1;
+                {% else %}
+                X -= alpha;
+                Y += 1;
+                {% endif %}
             }
 
            val += V * distCorr;
