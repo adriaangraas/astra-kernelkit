@@ -236,6 +236,8 @@ class FanBackprojection(Kernel):
         # @todo this should be abstracted away as an operation on a geometry
         angles_converted = [None] * len(angles)
         nr_pixels = sino.data.shape[1]
+
+        scaling_factor = volume.voxel_size[0]
         for i, angle in enumerate(angles):
             converted_angle = angle
             det_pos = np.array([angle.det_x, angle.det_y])
@@ -253,20 +255,15 @@ class FanBackprojection(Kernel):
             converted_angle.det_y += dy
 
             # scale appropriately (lol why I don't get it?)
-            factor = 1 / volume.voxel_size[0]
-            converted_angle.tube_x *= factor
-            converted_angle.tube_y *= factor
-            converted_angle.det_x *= factor
-            converted_angle.det_y *= factor
-            converted_angle.det_u_x *= factor
-            converted_angle.det_u_y *= factor
+            pre_scaling = 1 / scaling_factor
+            converted_angle.tube_x *= pre_scaling
+            converted_angle.tube_y *= pre_scaling
+            converted_angle.det_x *= pre_scaling
+            converted_angle.det_y *= pre_scaling
+            converted_angle.det_u_x *= pre_scaling
+            converted_angle.det_u_y *= pre_scaling
 
             angles_converted[i] = converted_angle
-
-        # scaling_factor /= float(volume.voxel_volume)
-        # scaling_factor *= float(sino.pixel_volume)
-
-        output_scale = volume.voxel_size[0]
 
         proj_texture = cupy_get_texture_obj(sino.data)
 
@@ -277,13 +274,13 @@ class FanBackprojection(Kernel):
         # chunk arrays in blocks of MAX_ANGLES
         for angle_start in range(0, len(angles), MAX_ANGLES):
             angle_end = min(angle_start + MAX_ANGLES, len(angles))
-            self._call_chunk(volume.data, proj_texture, params[angle_start:angle_end], output_scale)
+            self._call_chunk(volume.data, proj_texture, params[angle_start:angle_end], scaling_factor)
 
         # angle_extent = self.geometry.motion_partition.extent
         # num_angles = self.geometry.motion_partition.shape
         # scaling_factor = (angle_extent / num_angles).prod()
 
-        # @todo nasty stuff, what if I don't have equidistant angles?
+        # todo: nasty stuff, what if I don't have equidistant angles?
         # I took this from ODL, but I'm not sure if they tested for arbitrary angles
         scaling_factor = 2 * np.pi / 360
 

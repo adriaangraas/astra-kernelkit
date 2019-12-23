@@ -6,7 +6,7 @@ The package is mostly geared towards power users of the ASTRA Toolbox that need 
  - from the integration with Cupy we can expect
     - support for streams so that we can dynamically offload/onload projections while the kernel is computing;
     - enable pinned host memory when possible to prevent page faults;
-    - DLPack tensor compatibility with e.g. PyTorch.
+    - DLPack tensor compatibility with e.g. PyTorch and Chainer.
  -  from the Python high-level API we get some development benefits such as
     - debugging, in-between copying of memory 
     - easy plotting of algorithmic progress
@@ -28,10 +28,11 @@ dependent on CuPy to timely update when CUDA updates are rolled out.
 ## Roadmap
 #### PoC release
  - [ ] high level interface
+    - [ ] geometry
  - [ ] ODL integration
  - [ ] cone beam 3D
- - [ ] constant memory 
- - [ ] examples 
+ - [ ] constant memory (see https://github.com/cupy/cupy/pull/2510)
+ - [ ] not-ODL examples 
 
 #### 0.1 release
  - [ ] templated kernels
@@ -44,7 +45,7 @@ dependent on CuPy to timely update when CUDA updates are rolled out.
 #### 0.2 release
 
 #### 1.0 release
- - [ ] tests
+ - [ ] tests   
    - [ ] scaling, matching, contiguous
  - [ ] pip and Conda packaging
  - [ ] proper docs 
@@ -57,6 +58,7 @@ dependent on CuPy to timely update when CUDA updates are rolled out.
  - [ ] kerneltuner 
  - [ ] mixed precision
  - [ ] issue #2
+ - [ ] anisotropic voxel/pixel support
 
  
 ## Issues
@@ -69,7 +71,6 @@ from CuPy.
 The problem is that you don't want to switch to Numpy arrays internally
 because this forces a CPU-GPU copy.
 Probably not handled transparently: we need CupyTensorSpaces.
-
 
 #### #3 Cast warnings when the user mixes host/device dtypes
 Using higher precision memory is probably unnecessary slow and RAM consuming
