@@ -35,7 +35,7 @@ dependent on CuPy to timely update when CUDA updates are rolled out.
  - [ ] not-ODL examples 
 
 #### 0.1 release
- - [ ] templated kernels
+ - [x] templated kernels
  - [ ] pinned host memory
  - [ ] volume/sinogram axis order by user
  - [ ] parallel beam 2D / 3D

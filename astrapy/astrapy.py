@@ -2,25 +2,6 @@ import numpy as np
 import cupy as cp
 
 
-class StaticGeometry:
-    def __init__(self, det_x, det_y, det_u_x, det_u_y, tube_x, tube_y):
-        self.det_x = det_x
-        self.det_y = det_y
-
-        self.det_u_x = det_u_x
-        self.det_u_y = det_u_y
-
-        self.tube_x = tube_x
-        self.tube_y = tube_y
-
-    # @todo is there a nicer way?
-    def to_list(self):
-        return [self.det_x, self.det_y, self.det_u_x, self.det_u_y, self.tube_x, self.tube_y]
-
-    def __repr__(self):
-        return f"Det={self.det_x};{self.det_y};u={self.det_u_x};{self.det_u_y} Tube={self.tube_x};{self.tube_y}"
-
-
 class Volume:
     """n-dimensional reconstruction volume.
 

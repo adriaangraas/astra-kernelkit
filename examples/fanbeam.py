@@ -19,7 +19,7 @@ for i in range(360):
     det_u = 0.4 * np.array([-np.sin(alpha), np.cos(alpha)])
     tube = -10 * np.array([np.cos(alpha), np.sin(alpha)])
     det = 1 * np.array([np.cos(alpha), np.sin(alpha)])
-    angle = StaticGeometry(*det, *det_u, *tube)
+    angle = Static2DGeometry(*det, *det_u, *tube)
     points_x.append(tube[0])
     points_y.append(tube[1])
     points_x2.append(det[0])

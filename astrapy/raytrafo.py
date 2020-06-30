@@ -11,41 +11,33 @@
 from __future__ import absolute_import, division, print_function
 
 from builtins import object
-from typing import Any
 
 import numpy as np
-from odl.discr import DiscreteLp, DiscreteLpElement
-from odl.tomo.backends.astra_setup import astra_conebeam_2d_geom_to_vec
-from odl.tomo.geometry import (
-    ConeBeamGeometry, FanBeamGeometry, Geometry, Parallel2dGeometry,
-    Parallel3dAxisGeometry, ParallelBeamGeometry, Flat1dDetector,
-    Flat2dDetector, DivergentBeamGeometry)
+from odl.discr import DiscretizedSpace, DiscretizedSpaceElement
+from odl.tomo.geometry import (DivergentBeamGeometry, FanBeamGeometry,
+                               Flat1dDetector, Flat2dDetector, Geometry)
+from odl.tomo.util.utility import euler_matrix
 
 import astrapy
 import astrapy.kernel as kernel
 
-__all__ = (
-    'AstrapyProjectorImpl',
-    'AstrapyBackProjectorImpl',
-)
-
 
 class VolumeAdapter(astrapy.Volume):
-    """Wrapper for a DiscreteLp element to interface with ASTRApy volume."""
+    """Wrapper for a DiscretizedSpaceElement to interface with ASTRApy volume."""
 
-    def __init__(self, vol_data: DiscreteLpElement):
+    def __init__(self, vol_data: DiscretizedSpaceElement):
         """Create an ASTRApy Volume
 
         Parameters
         ----------
-        vol_space : `DiscreteLp`
+        vol_space : `DiscretizedSpace`
             Discretized space where the reconstruction (volume) lives.
             It must be 2- or 3-dimensional and uniformly discretized.
         """
         vol_space = vol_data.space
 
-        if not isinstance(vol_space, DiscreteLp):
-            raise TypeError('`vol_space` {!r} is not a DiscreteLp instance'
+        if not isinstance(vol_space, DiscretizedSpace):
+            raise TypeError('`vol_space` {!r} is not a DiscretizedSpace instance'
                             ''.format(vol_space))
 
         if not vol_space.is_uniform:
@@ -68,15 +60,16 @@ class VolumeAdapter(astrapy.Volume):
 
 
 class SinogramAdapter(astrapy.Sinogram):
-    """Wrapper for a DiscreteLp element to interface with ASTRApy sinogram."""
+    """Wrapper for a DiscretizedSpace element to interface with ASTRApy sinogram."""
 
-    def __init__(self, geometry: Geometry, proj_data: DiscreteLpElement = None):
+    def __init__(self, geometry: Geometry,
+                 proj_data: DiscretizedSpaceElement = None):
         """Create an ASTRApy Volume
 
         Parameters
         ----------
         geometry : `Geometry`
-        proj_data : `DiscreteLp`
+        proj_data : `DiscretizedSpace`
             Discretized space where the projection data (volume) lives.
             It must be time + 2- or 3-dimensional and uniformly discretized.
             If `None` is given then `data` will auto-initialize an empty array.
@@ -90,16 +83,19 @@ class SinogramAdapter(astrapy.Sinogram):
 
             # todo: how to check if this is consistent with the geometry?
 
-            if not isinstance(proj_space, DiscreteLp):
-                raise TypeError('`proj_space` {!r} is not a DiscreteLp instance'
-                                ''.format(proj_space))
+            if not isinstance(proj_space, DiscretizedSpace):
+                raise TypeError(
+                    '`proj_space` {!r} is not a DiscretizedSpace instance'
+                    ''.format(proj_space))
 
             if not proj_space.is_uniform:
-                raise ValueError('`proj_space` {} is not uniformly discretized')
+                raise ValueError(
+                    '`proj_space` {} is not uniformly discretized')
 
             data = proj_data.asarray()
         else:
-            data = astrapy.empty_gpu(geometry.grid.shape, dtype=astrapy.kernel.Kernel.FLOAT_DTYPE)
+            data = astrapy.empty_gpu(geometry.grid.shape,
+                                     dtype=astrapy.kernel.Kernel.FLOAT_DTYPE)
 
         proj_min = geometry.det_partition.min_pt
         proj_max = geometry.det_partition.max_pt
@@ -117,43 +113,71 @@ class SinogramAdapter(astrapy.Sinogram):
         return self.geometry.det_partition.cell_volume
 
 
-def astrapy_fanflat_geometry_to_angles(geometry):
-    vec = astra_conebeam_2d_geom_to_vec(geometry)
-    # (srcX, srcY, dX, dY, uX, uY) -> (dX, dY, ..., srcX, srcY)
-    vec = np.roll(vec, -2, axis=1)
+class GeometryDictAdapter(astrapy.GeometryDict):
+    def __init__(self, geometry: DivergentBeamGeometry):
+        super().__init__()
+        self.geometry = geometry
 
-    angles = [None] * len(vec)
-    for i, angle in enumerate(vec):
-        angles[i] = astrapy.StaticGeometry(*angle)
+        # Instead of rotating the data by 90 degrees counter-clockwise,
+        # we subtract pi/2 from the geometry angles, thereby rotating the
+        # geometry by 90 degrees clockwise
+        rot_minus_90 = euler_matrix(-np.pi / 2)
+        angles = geometry.angles  # type: FanBeamGeometry
+        vectors = np.zeros((angles.size, 6))
 
-    return angles
+        # Source position
+        src_pos = geometry.src_position(angles)
+        vectors[:, 0:2] = rot_minus_90.dot(src_pos.T).T  # dot along 2nd axis
+
+        # Center of detector
+        mid_pt = geometry.det_params.mid_pt
+        # Need to cast `mid_pt` to float since otherwise the empty axis is
+        # not removed
+        centers = geometry.det_point_position(angles, float(mid_pt))
+        vectors[:, 2:4] = rot_minus_90.dot(centers.T).T
+
+        # Vector from detector pixel 0 to 1
+        det_axis = rot_minus_90.dot(geometry.det_axis(angles).T).T
+        px_size = geometry.det_partition.cell_sides[0]
+        vectors[:, 4:6] = det_axis * px_size
+
+        # (srcX, srcY, dX, dY, uX, uY) -> (dX, dY, ..., srcX, srcY)
+        vec = np.roll(vectors, -2, axis=1)
+
+        for i, angle in enumerate(angles):
+            det = astrapy.Flat1DDetector(geometry.detector.size,
+                                         geometry.det_partition.cell_sides[0])
+            self._geoms_at_times[i] = astrapy.Static2DGeometry(vec[i, :2],
+                                                               vec[i, 2:4],
+                                                               geometry.angles[
+                                                                   i], det)
 
 
-class AstrapyProjectorImpl(object):
+class RayTrafoImpl(object):
     """Thin wrapper around ASTRApy."""
 
-    def __init__(self, geometry, reco_space, proj_space):
+    def __init__(self, geometry, vol_space, proj_space):
         """Initialize a new instance.
 
         Parameters
         ----------
         geometry : `Geometry`
             Geometry defining the tomographic setup.
-        reco_space : `DiscreteLp`
+        vol_space : `DiscretizedSpace`
             Reconstruction space, the space of the images to be forward
             projected.
-        proj_space : `DiscreteLp`
+        proj_space : `DiscretizedSpace`
             Projection space, the space of the result.
         """
         if not isinstance(geometry, Geometry):
             raise TypeError('`geometry` {!r} is not a `Geometry` instance'
                             ''.format(geometry))
 
-        assert isinstance(reco_space, DiscreteLp)
-        assert isinstance(proj_space, DiscreteLp)
+        assert isinstance(vol_space, DiscretizedSpace)
+        assert isinstance(proj_space, DiscretizedSpace)
 
         self.geometry = geometry
-        self.reco_space = reco_space
+        self.vol_space = vol_space
         self.proj_space = proj_space
 
     def call_forward(self, vol_data, out=None):
@@ -161,7 +185,7 @@ class AstrapyProjectorImpl(object):
 
         Parameters
         ----------
-        vol_data : ``reco_space`` element
+        vol_data : ``vol_space`` element
             Volume data to which the projector is applied.
         out : ``proj_space`` element, optional
             Element of the projection space to which the result is written. If
@@ -173,7 +197,7 @@ class AstrapyProjectorImpl(object):
             Projection data resulting from the application of the projector.
             If ``out`` was provided, the returned object is a reference to it.
         """
-        assert vol_data in self.reco_space
+        assert vol_data in self.vol_space
         if out is not None:
             assert out in self.proj_space
         else:
@@ -183,20 +207,18 @@ class AstrapyProjectorImpl(object):
             raise ValueError('Non-uniform detector sampling is not supported')
 
         if (isinstance(self.geometry, DivergentBeamGeometry) and
-                isinstance(self.geometry.detector, (Flat1dDetector, Flat2dDetector)) and
-                self.geometry.ndim == 2):
+            isinstance(self.geometry.detector,
+                       (Flat1dDetector, Flat2dDetector)) and
+            self.geometry.ndim == 2):
             fp = kernel.FanProjection()
-            # wrap input vol_data
+            geom = GeometryDictAdapter(self.geometry)
             volume = VolumeAdapter(vol_data)
-
-            # todo should be a geometry
-            angles = astrapy_fanflat_geometry_to_angles(self.geometry)
             sino = SinogramAdapter(self.geometry)
 
-            # @todo test for 1D and 2D detectors
-            fp(volume, sino, angles)
+            fp(volume, sino, geom)
         else:
-            raise NotImplementedError('Unknown Astrapy geometry type {!r}'.format(self.geometry))
+            raise NotImplementedError(
+                'Unknown Astrapy geometry type {!r}'.format(self.geometry))
 
         # Copy result to host
         if self.geometry.ndim == 2:
@@ -210,16 +232,16 @@ class AstrapyProjectorImpl(object):
 class AstrapyBackProjectorImpl(object):
     """Thin wrapper around ASTRA."""
 
-    def __init__(self, geometry, reco_space, proj_space):
+    def __init__(self, geometry, vol_space, proj_space):
         """Initialize a new instance.
 
         Parameters
         ----------
         geometry : `Geometry`
             Geometry defining the tomographic setup.
-        reco_space : `DiscreteLp`
+        vol_space : `DiscretizedSpace`
             Reconstruction space, the space to which the backprojection maps.
-        proj_space : `DiscreteLp`
+        proj_space : `DiscretizedSpace`
             Projection space, the space from which the backprojection maps.
         """
 
@@ -227,11 +249,11 @@ class AstrapyBackProjectorImpl(object):
             raise TypeError('`geometry` {!r} is not a `Geometry` instance'
                             ''.format(geometry))
 
-        assert isinstance(reco_space, DiscreteLp)
-        assert isinstance(proj_space, DiscreteLp)
+        assert isinstance(vol_space, DiscretizedSpace)
+        assert isinstance(proj_space, DiscretizedSpace)
 
         self.geometry = geometry
-        self.reco_space = reco_space
+        self.vol_space = vol_space
         self.proj_space = proj_space
 
     def call_backward(self, proj_data, out=None):
@@ -241,13 +263,13 @@ class AstrapyBackProjectorImpl(object):
         ----------
         proj_data : ``proj_space`` element
             Projection data to which the back-projector is applied.
-        out : ``reco_space`` element, optional
+        out : ``vol_space`` element, optional
             Element of the reconstruction space to which the result is written.
-            If ``None``, an element in ``reco_space`` is created.
+            If ``None``, an element in ``vol_space`` is created.
 
         Returns
         -------
-        out : ``reco_space`` element
+        out : ``vol_space`` element
             Reconstruction data resulting from the application of the
             back-projector. If ``out`` was provided, the returned object is a
             reference to it.
@@ -255,9 +277,9 @@ class AstrapyBackProjectorImpl(object):
         assert proj_data in self.proj_space
 
         if out is not None:
-            assert out in self.reco_space
+            assert out in self.vol_space
         else:
-            out = self.reco_space.element()
+            out = self.vol_space.element()
 
         if self.geometry.motion_partition.ndim == 1:
             motion_shape = self.geometry.motion_partition.shape
@@ -266,13 +288,16 @@ class AstrapyBackProjectorImpl(object):
             motion_shape = (np.prod(self.geometry.motion_partition.shape),)
 
         if len(motion_shape + self.geometry.det_partition.shape) != 2:
-            raise NotImplementedError("3D is not yet implemented, but we would need to take care with axis here.")
+            raise NotImplementedError(
+                "3D is not yet implemented, but we would need to take care with axis here.")
 
         sino = SinogramAdapter(self.geometry, proj_data)
         angles = astrapy_fanflat_geometry_to_angles(self.geometry)
 
-        volume_data = astrapy.empty_gpu(self.reco_space.shape, dtype=kernel.Kernel.FLOAT_DTYPE)
-        volume = astrapy.Volume(volume_data, self.reco_space.min_pt, self.reco_space.max_pt)
+        volume_data = astrapy.empty_gpu(self.vol_space.shape,
+                                        dtype=kernel.Kernel.FLOAT_DTYPE)
+        volume = astrapy.Volume(volume_data, self.vol_space.min_pt,
+                                self.vol_space.max_pt)
 
         bp = kernel.FanBackprojection()
         volume = bp(volume, sino, angles)

@@ -27,7 +27,7 @@ from odl.tomo.backends import (
 from odl.tomo.geometry import (
     Geometry, Parallel2dGeometry, Parallel3dAxisGeometry)
 
-from astrapy.odlmod.tomo.backends.astrapy import (
+from astrapy.raytrafo import (
     AstrapyBackProjectorImpl, AstrapyProjectorImpl)
 
 ASTRA_CPU_AVAILABLE = ASTRA_AVAILABLE

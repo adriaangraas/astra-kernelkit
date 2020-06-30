@@ -19,24 +19,16 @@ geometry = odl.tomo.FanBeamGeometry(angle_partition, detector_partition,
 # Ray transform (= forward projection).
 # ray_trafo_astrapy = odlmod.tomo.RayTransform(reco_space, geometry, impl='astrapy')
 ray_trafo_astrapy = odl.tomo.RayTransform(reco_space, geometry, impl=astrapy.RayTrafoImpl)
-ray_trafo_astra_cuda = odl.tomo.RayTransform(reco_space, geometry, impl='astra_cuda')
 
 # Create a discrete Shepp-Logan phantom (modified version)
 phantom = odl.phantom.shepp_logan(reco_space, modified=True)
 
 # Create projection data by calling the ray transform on the phantom
 proj_data_astrapy = ray_trafo_astrapy(phantom)
-proj_data_astra_cuda = ray_trafo_astra_cuda(phantom)
 
-vmin = min(np.min(proj_data_astrapy), np.min(proj_data_astra_cuda))
-vmax = max(np.max(proj_data_astrapy), np.max(proj_data_astra_cuda))
-proj_data_astrapy.show(title='Projection Data (astrapy)', vmin=vmin, vmax=vmax)
-proj_data_astra_cuda.show(title='Projection Data (astra_cuda)', vmin=vmin, vmax=vmax, force_show=True)
+proj_data_astrapy.show(title='Projection Data (astrapy)')
 # projection data (or any element in the projection space).
 backproj_astrapy = ray_trafo_astrapy.adjoint(proj_data_astrapy)
-backproj_astra_cuda = ray_trafo_astra_cuda.adjoint(proj_data_astra_cuda)
 
 # Shows a slice of the phantom, projections, and reconstruction
-# phantom.show(title='Phantom')
 backproj_astrapy.show(title='Back-projection (astrapy)', vmin=0., vmax=100)
-backproj_astra_cuda.show(title='Back-projection (astra_cuda)', force_show=True, vmin=0., vmax=100)
