@@ -29,9 +29,9 @@ dependent on CuPy to timely update when CUDA updates are rolled out.
 #### PoC release
  - [ ] high level interface
     - [ ] geometry
- - [ ] ODL integration
- - [ ] cone beam 3D
- - [ ] constant memory (see https://github.com/cupy/cupy/pull/2510)
+ - [x] ODL integration
+ - [x] cone beam 3D
+ - [x] constant memory (see https://github.com/cupy/cupy/pull/2510)
  - [ ] not-ODL examples 
 
 #### 0.1 release

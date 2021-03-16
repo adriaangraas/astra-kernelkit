@@ -25,14 +25,20 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 extern "C" {
+    __constant__ float csrcX[{{ max_angles }}];
+    __constant__ float csrcY[{{ max_angles }}];
+    __constant__ float cdetSX[{{ max_angles }}];
+    __constant__ float cdetSY[{{ max_angles }}];
+    __constant__ float cdetUX[{{ max_angles }}];
+    __constant__ float cdetUY[{{ max_angles }}];
+
     /**
      * Forward projection for fan geometry with flat detector
      *
      * Adriaan: I'm waiting for C++17 to be supported in CUDA, then I can template bool horizontalMode, and use
      *          a "constexpr if" on the conditions. Until then I'll use Jinja templates!
-     * Adriaan: Further @todo on this kernel are
+     * Adriaan: Further TODO's on this kernel are
      * - pitched memory support is not (yet, or never) in CuPy, how much are we missing out?
-     * - constant memory is almost in CuPy and we should use it here for the angles
      * - from ASTRA Toolbox: for very small sizes (roughly <=512x128) with few angles (<=180)
      *                       not using an array is more efficient.
      * - supersampling
@@ -41,7 +47,6 @@ extern "C" {
     __global__ void
     fan_fp(cudaTextureObject_t volumeTexture,  // volume in texture memory
            float * projections,                // list of angles to iterate
-           float * angles,                     // angle list in shared memory (too slow?)
            unsigned int startSlice,            // ?
            unsigned int startAngle,            // global start index in float* angle
            unsigned int endAngle,              // global end index in float* angle
@@ -50,7 +55,7 @@ extern "C" {
            int volWidth,                       // volume (txt memory) width
            int volHeight,                      // volume (txt memory) height
            float outputScale
-           ) {
+    ) {
         const int relDet = threadIdx.x;
         const int relAngle = threadIdx.y;
         const int angle = startAngle + blockIdx.x * {{ angles_per_block }} + relAngle;
@@ -63,12 +68,12 @@ extern "C" {
         if (pixel < 0 || pixel >= projDets)
             return;
 
-        const float detSX = angles[angle*6];
-        const float detSY = angles[angle*6+1];
-        const float detUX = angles[angle*6+2];
-        const float detUY = angles[angle*6+3];
-        const float srcX = angles[angle*6+4];
-        const float srcY = angles[angle*6+5];
+        const float srcX = csrcX[angle];
+        const float srcY = csrcY[angle];
+        const float detSX = cdetSX[angle];
+        const float detSY = cdetSY[angle];
+        const float detUX = cdetUX[angle];
+        const float detUY = cdetUY[angle];
 
         const float fdx = fabsf(detSX + pixel * detUX + 0.5f - srcX);
         const float fdy = fabsf(detSY + pixel * detUY + 0.5f - srcY);
@@ -98,7 +103,7 @@ extern "C" {
             beta = srcX - alpha * srcY;
             {% endif %}
 
-            float distCorr = sqrt(alpha * alpha + 1) * outputScale / raysPerDet;
+            const float distCorr = sqrt(alpha * alpha + 1) * outputScale / raysPerDet;
 
             // intersect ray with first slice
             float X, Y;

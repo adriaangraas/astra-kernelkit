@@ -25,20 +25,27 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 extern "C" {
+    struct Params {
+        float numC;
+        float numX;
+        float numY;
+        float denC;
+        float denX;
+        float denY;
+    };
+    __constant__ Params params[{{ max_angles }}];
+
     /**
      * Backprojection for fan geometry with flat detector
-     * Note this is just a PoC and not likely to hit the performance of ASTRA Toolbox.
      *
-     * @todo
+     * TODO:
      *  - supersampling
      *  - SART version / FBPWEIGHT
-     *  - transfer DevFanParams to constant memory
      */
     __global__ void
     fan_bp(
         cudaTextureObject_t projTexture,
         float* volume,
-        float* params,                     // in shared memory (too slow?)
         int startAngle,
         int nrAngles,
         int volWidth,                      // volume (txt memory) width
@@ -48,7 +55,7 @@ extern "C" {
         const int relX = threadIdx.x;
         const int relY = threadIdx.y;
 
-        int endAngle = startAngle + {{ angles_per_block}};
+        int endAngle = startAngle + {{ angles_per_block }};
 
         if (endAngle > nrAngles)
             endAngle = nrAngles;
@@ -60,31 +67,28 @@ extern "C" {
             return;
 
         const float X = blockX - .5f * volWidth + .5f;
-        const float Y = - (blockY - 0.5f * volHeight + 0.5f);
+        const float Y = - (blockY - .5f * volHeight + .5f);
 
         float val = .0f;
         float a = startAngle + .5f;
 
-        for (int angle = startAngle * 6; angle < endAngle * 6; angle += 6)
+        for (int angle = startAngle; angle < endAngle; ++angle, a += 1.f)
         {
-            const float numC = params[angle];
-            const float numX = params[angle +1];
-            const float numY = params[angle + 2];
-            const float denX = params[angle + 4];
-            const float denY = params[angle + 5];
-
-            const float num = numC + numX * X + numY * Y;
-            const float den = params[angle + 3] + denX * X + denY * Y;
+            const Params p = params[angle];
+            const float num = p.numC + p.numX * X + p.numY * Y;
+            const float den = p.denC + p.denX * X + p.denY * Y;
 
             // Scale factor is the approximate number of rays traversing this pixel,
             // given by the inverse size of a detector pixel scaled by the magnification
             // factor of this pixel.
             // Magnification factor is || u (d-s) || / || u (x-s) ||
+
+            // inverse size detector pixel
             const float r = __fdividef(1.f, den);
+            // scaled by magnification factor of the pixel
             const float T = num * r;
 
             val += tex2D<float>(projTexture, T, a) * r;
-            a += 1.f;
         }
 
         volume[blockY * volWidth + blockX] += val * outputScale;

@@ -5,10 +5,10 @@ import cupy as cp
 class Volume:
     """n-dimensional reconstruction volume.
 
-    I would love to use the ODL functionality here, but it would yield a direct ODL dependency. If you plan on using
-    ODL, please see `astrapy.odlmod.tomo.backends.astrapy.DiscreteLpVolumeAdapter` instead.
+    I would love to use the ODL functionality here, but it would yield a direct
+    ODL dependency. If you plan on using ODL, please see
+    `astrapy.odlmod.tomo.backends.astrapy.DiscreteLpVolumeAdapter` instead.
     """
-
     def __init__(self, data, extent_min: tuple, extent_max: tuple, axis_order: tuple = None):
         self.data = data
 
@@ -46,6 +46,9 @@ class Volume:
     def data(self, value):
         if not (isinstance(value, np.ndarray) or isinstance(value, cp.ndarray)):
             raise TypeError("`data` has to be a ndarray.")
+
+        if hasattr(self, '_data'):
+            assert value.shape == self._data.shape
 
         self._data = value
 
@@ -107,7 +110,7 @@ class Sinogram:
             raise ValueError("`extent_min` and `extent_max` require the same dimensions as the data - 1.")
 
         if axis_order != [0, 1, 2]:
-            # @todo check if correct
+            # TODO(Adriaan): check if correct
             pass
         else:
             axis_order = tuple(range(data.ndim))
@@ -157,7 +160,7 @@ class Sinogram:
     @property
     def pixel_size(self) -> tuple:
         """The physical size of a pixel."""
-        # @todo consider ordering (now assuming angular space is first dim)
+        # TODO(Adriaan): consider ordering (now assuming angular space is first dim)
         n = np.array(self.data.shape)
         dists = np.array(self.extent_max) - np.array(self.extent_min)
         shp = list(dists / n)
@@ -167,7 +170,7 @@ class Sinogram:
     @property
     def has_isotropic_pixels(self) -> bool:
         """Check if a pixel has the same length in each direction."""
-        # @todo consider ordering (now assuming angular space is first dim)
+        # TODO(Adriaan): consider ordering (now assuming angular space is first dim)
         shp = np.array(self.pixel_size[1:])
         return np.all(shp - shp.flat[0] == 0.)
 
@@ -178,5 +181,15 @@ class Sinogram:
 
 def empty_gpu(shape, dtype=None, order=None):
     """An implementation-unaware array creation helper.
-    Leaves the choice of array initialization up to ASTRApy."""
+    Helps the user to write Cupy-free code.
+    TODO: evaluate if it is realistic to expect that a Cupy-unaware user
+    """
     return cp.empty(shape, dtype, order)
+
+
+def zeros_gpu(shape, dtype=None, order=None):
+    """An implementation-unaware array creation helper.
+    Helps the user to write Cupy-free code.
+    TODO: evaluate if it is realistic to expect that a Cupy-unaware user
+    """
+    return cp.zeros(shape, dtype, order)
