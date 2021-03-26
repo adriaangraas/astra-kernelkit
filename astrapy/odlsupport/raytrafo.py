@@ -1,109 +1,15 @@
 from __future__ import absolute_import, division, print_function
 
 import copy
-from builtins import object
 
 import numpy as np
-from odl.discr import DiscretizedSpace, DiscretizedSpaceElement
+from odl.discr import DiscretizedSpace
 from odl.tomo import cone_2d_geom_to_astra_vecs
 from odl.tomo.geometry import (ConeBeamGeometry, FanBeamGeometry,
                                Flat1dDetector, Flat2dDetector, Geometry)
 
 import astrapy
 import astrapy.kernel as kernel
-
-
-class VolumeAdapter(astrapy.Volume):
-    """Expose a DiscretizedSpace element as an ASTRApy volume."""
-
-    def __init__(self, vol_data: DiscretizedSpaceElement):
-        """Create an ASTRApy Volume
-
-        Parameters
-        ----------
-        vol_space : `DiscretizedSpace`
-            Discretized space where the reconstruction (volume) lives.
-            It must be 2- or 3-dimensional and uniformly discretized.
-        """
-        vol_space = vol_data.space
-
-        if not isinstance(vol_space, DiscretizedSpace):
-            raise TypeError(
-                '`vol_space` {!r} is not a DiscretizedSpace instance'
-                ''.format(vol_space))
-
-        if not vol_space.is_uniform:
-            raise ValueError('`vol_space` {} is not uniformly discretized')
-
-        vol_min = vol_space.partition.min_pt
-        vol_max = vol_space.partition.max_pt
-
-        # TODO: how does the axis order vary in ODL?
-        vol_data_numpy = vol_data.asarray()
-        super().__init__(vol_data_numpy, vol_min, vol_max)
-        self.vol_space = vol_space
-
-    @property
-    def has_isotropic_voxels(self) -> bool:
-        return self.vol_space.partition.has_isotropic_cells
-
-    @property
-    def voxel_volume(self) -> float:
-        return self.vol_space.partition.cell_volume
-
-
-class SinogramAdapter(astrapy.Sinogram):
-    """Expose a DiscretizedSpace element as an ASTRApy sinogram."""
-
-    def __init__(self, geometry: Geometry,
-                 proj_data: DiscretizedSpaceElement = None):
-        """Create an ASTRApy Volume
-
-        Parameters
-        ----------
-        geometry : `Geometry`
-        proj_data : `DiscretizedSpace`
-            Discretized space where the projection data (volume) lives.
-            It must be time + 2- or 3-dimensional and uniformly discretized.
-            If `None` is given then `data` will auto-initialize an empty array.
-        """
-        if not isinstance(geometry, Geometry):
-            raise TypeError('`geometry` {!r} is not a FanBeamGeometry instance'
-                            ''.format(geometry))
-
-        if proj_data is not None:
-            proj_space = proj_data.space
-
-            # TODO: how to check if this is consistent with the geometry?
-
-            if not isinstance(proj_space, DiscretizedSpace):
-                raise TypeError(
-                    '`proj_space` {!r} is not a DiscretizedSpace instance'
-                    ''.format(proj_space))
-
-            if not proj_space.is_uniform:
-                raise ValueError(
-                    '`proj_space` {} is not uniformly discretized')
-
-            data = proj_data.asarray()
-        else:
-            data = astrapy.zeros_gpu(geometry.grid.shape,
-                                     dtype=astrapy.kernel.Kernel.FLOAT_DTYPE)
-
-        proj_min = geometry.det_partition.min_pt
-        proj_max = geometry.det_partition.max_pt
-
-        super().__init__(data, proj_min, proj_max)
-        # self.proj_space = proj_space
-        self.geometry = geometry
-
-    @property
-    def has_isotropic_pixels(self) -> bool:
-        return self.geometry.det_partition.has_isotropic_cells
-
-    @property
-    def pixel_volume(self) -> float:
-        return self.geometry.det_partition.cell_volume
 
 
 def _cone_2d_to_geom2d(geometry):
@@ -124,38 +30,27 @@ def _cone_2d_to_geom2d(geometry):
 
 
 def _cone_3d_to_geom3d(geometry):
-    angles = geometry.angles
-    mid_pt = geometry.det_params.mid_pt
-    vectors = np.zeros((angles.size, 12))
-
-    # Source position
-    vectors[:, 0:3] = geometry.src_position(angles)
-
-    # Center of detector in 3D space
-    vectors[:, 3:6] = geometry.det_point_position(angles, mid_pt)
-    det_axes = np.moveaxis(geometry.det_axes(angles), -2, 0)
-    vectors[:, 6:9] = det_axes[0]
-    vectors[:, 9:12] = det_axes[1]
-
     det = astrapy.Flat2DDetector(
-        rows=geometry.detector.shape[1],
-        cols=geometry.detector.shape[0],
-        pixel_width=geometry.det_partition.cell_sides[0],
-        pixel_height=geometry.det_partition.cell_sides[1])
+        rows=geometry.detector.shape[0],
+        cols=geometry.detector.shape[1],
+        pixel_width=geometry.det_partition.cell_sides[1],
+        pixel_height=geometry.det_partition.cell_sides[0])
 
     geoms = list()
-    for i, angle in enumerate(vectors):
+    for angle in zip(geometry.angles):
+        det_axes = np.moveaxis(geometry.det_axes(angle), -2, 0)
         geoms.append(astrapy.AstraStatic3DGeometry(
-            tube_pos=vectors[i, :3],
-            det_pos=vectors[i, 3:6],
-            u_unit=vectors[i, 6:9],
-            v_unit=vectors[i, 9:12],
+            tube_pos=geometry.src_position(angle)[0],
+            det_pos=
+            geometry.det_point_position(angle, geometry.det_params.mid_pt)[0],
+            u_unit=det_axes[1][0],
+            v_unit=det_axes[0][0],
             detector=copy.deepcopy(det)))
 
     return geoms
 
 
-class RayTrafoImpl(object):
+class RayTrafoImpl:
     """Thin wrapper around ASTRApy."""
 
     def __init__(self, geometry, vol_space, proj_space):
@@ -210,8 +105,7 @@ class RayTrafoImpl(object):
         if not self.geometry.det_partition.is_uniform:
             raise ValueError('Non-uniform detector sampling is not supported')
 
-        volume = VolumeAdapter(vol_data)
-        sino = SinogramAdapter(self.geometry)
+        # sino = SinogramAdapter(self.geometry)
 
         if (isinstance(self.geometry, FanBeamGeometry)
             and isinstance(self.geometry.detector, Flat1dDetector)
@@ -222,15 +116,20 @@ class RayTrafoImpl(object):
         elif (isinstance(self.geometry, ConeBeamGeometry)
               and isinstance(self.geometry.detector, Flat2dDetector)
               and self.geometry.ndim == 3):
-            fp = kernel.ConeProjection()
             geom = _cone_3d_to_geom3d(self.geometry)
-            fp(volume, sino, geom)
+            sino = astrapy.fp(
+                vol_data.data,
+                geom,
+                volume_extent_min=self.vol_space.min_pt,
+                volume_extent_max=self.vol_space.max_pt)
+
+            # TODO: issue #2
+            out[:] = np.reshape(sino, self.proj_space.shape)
         else:
             raise NotImplementedError(
                 'Unknown AstraPy geometry type {!r}, incorrect detector,'
                 ' or incorrect geometry dimension. '.format(self.geometry))
 
-        out[:] = sino.data_numpy  # TODO: issue #2
         return out
 
     def call_backward(self, proj_data, out=None):
@@ -259,34 +158,37 @@ class RayTrafoImpl(object):
         else:
             out = self.vol_space.element()
 
-        volume = astrapy.Volume(
-            data=astrapy.zeros_gpu(
-                self.vol_space.shape,
-                dtype=kernel.Kernel.FLOAT_DTYPE
-            ),
-            extent_min=self.vol_space.min_pt,
-            extent_max=self.vol_space.max_pt)
-        sino = SinogramAdapter(self.geometry, proj_data)
+        # volume = astrapy.Volume(
+        #     data=astrapy.zeros_gpu(
+        #         self.vol_space.shape,
+        #         dtype=kernel.Kernel.FLOAT_DTYPE
+        #     ),
+        #     extent_min=self.vol_space.min_pt,
+        #     extent_max=self.vol_space.max_pt)
+        # sino = SinogramAdapter(self.geometry, proj_data)
 
         if (isinstance(self.geometry, FanBeamGeometry)
             and isinstance(self.geometry.detector, Flat1dDetector)
             and self.geometry.ndim == 2):
             geom = _cone_2d_to_geom2d(self.geometry)
             bp = kernel.FanBackprojection()
-            bp(volume, sino, geom)
+            bp(volume, sino, geom, volume_shape)
         elif (isinstance(self.geometry, ConeBeamGeometry)
               and isinstance(self.geometry.detector, Flat2dDetector)
               and self.geometry.ndim == 3):
             geom = _cone_3d_to_geom3d(self.geometry)
-            bp = kernel.ConeBackprojection()
-            bp(volume, sino, geom)
+            volume = astrapy.bp(proj_data.data,
+                        geom,
+                        volume_shape=self.vol_space.shape,
+                        volume_extent_min=self.vol_space.min_pt,
+                        volume_extent_max=self.vol_space.max_pt)
         else:
             raise NotImplementedError(
                 'Unknown AstraPy geometry type {!r}, incorrect detector,'
                 ' or incorrect geometry dimension. '.format(self.geometry))
 
         # Copy result to CPU memory, TODO: issue #2 again
-        out[:] = volume.data_numpy
+        out[:] = volume
 
         # no more scaling here?
         # TODO: weighted spaces, how to handle them

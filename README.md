@@ -41,6 +41,7 @@ dependent on CuPy to timely update when CUDA updates are rolled out.
  - [ ] parallel beam 2D / 3D
  - [ ] issue #1
  - [ ] checks: axis, contiguous, dtypes
+ - [ ] automatically limiting upload of projs based on available memory
 
 #### 0.2 release
 

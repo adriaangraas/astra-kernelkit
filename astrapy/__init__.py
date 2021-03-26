@@ -1,4 +1,3 @@
-from .astrapy import *
-from .geom2d import *
-from .geom3d import *
-from .raytrafo import *
+from .algo import *
+from .data import *
+from astrapy import geom2d, geom3d

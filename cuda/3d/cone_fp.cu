@@ -26,18 +26,18 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 */
 typedef texture<float, 3, cudaReadModeElementType> texture3D;
 
-__constant__ float srcsX[{{ max_angles }}];
-__constant__ float srcsY[{{ max_angles }}];
-__constant__ float srcsZ[{{ max_angles }}];
-__constant__ float detsSX[{{ max_angles }}];
-__constant__ float detsSY[{{ max_angles }}];
-__constant__ float detsSZ[{{ max_angles }}];
-__constant__ float detsUX[{{ max_angles }}];
-__constant__ float detsUY[{{ max_angles }}];
-__constant__ float detsUZ[{{ max_angles }}];
-__constant__ float detsVX[{{ max_angles }}];
-__constant__ float detsVY[{{ max_angles }}];
-__constant__ float detsVZ[{{ max_angles }}];
+__constant__ float srcsX[{{ nr_projs_global }}];
+__constant__ float srcsY[{{ nr_projs_global }}];
+__constant__ float srcsZ[{{ nr_projs_global }}];
+__constant__ float detsSX[{{ nr_projs_global }}];
+__constant__ float detsSY[{{ nr_projs_global }}];
+__constant__ float detsSZ[{{ nr_projs_global }}];
+__constant__ float detsUX[{{ nr_projs_global }}];
+__constant__ float detsUY[{{ nr_projs_global }}];
+__constant__ float detsUZ[{{ nr_projs_global }}];
+__constant__ float detsVX[{{ nr_projs_global }}];
+__constant__ float detsVY[{{ nr_projs_global }}];
+__constant__ float detsVZ[{{ nr_projs_global }}];
 
 // x=0, y=1, z=2
 struct DIR_X {
@@ -103,7 +103,7 @@ struct DIR_Z {
 template<typename COORD>
 __global__ void cone_fp(
     texture3D volumeTexture,
-    float * projections,
+    float ** projections,
     unsigned int startSlice,
     unsigned int startAngle,
     unsigned int endAngle,
@@ -119,7 +119,7 @@ __global__ void cone_fp(
 ) {
     COORD c;
 
-    int angle = startAngle + blockIdx.y * {{ angles_per_block }} + threadIdx.y;
+    int angle = startAngle + blockIdx.y * {{ nr_projs_block }} + threadIdx.y;
     if (angle >= endAngle)
         return;
 
@@ -135,6 +135,9 @@ __global__ void cone_fp(
     const float dSX = detsSX[angle] + .5f * dUX + .5f * dVX;
     const float dSY = detsSY[angle] + .5f * dUY + .5f * dVY;
     const float dSZ = detsSZ[angle] + .5f * dUZ + .5f * dVZ;
+//    if (angle == 1) {
+//        printf("%f %f %f %f %f %f %f %f %f %f %f %f\n", sX, sY, sZ, dUX, dUY, dUZ, dVX, dVY, dVZ, dSX, dSY, dSZ);
+//    }
 
     const int rowsInBlock = (detectorCols + {{ columns_per_block }} - 1)
                             / {{ columns_per_block }};
@@ -166,6 +169,7 @@ __global__ void cone_fp(
         const float b1 = c.y(sX, sY, sZ) - a1 * c.x(sX, sY, sZ);
         const float b2 = c.z(sX, sY, sZ) - a2 * c.x(sX, sY, sZ);
 
+
         /* Could be (for cubes):
          *  sqrt(a1 * a1 + a2 * a2 + 1.0f) * outputScale; */
         const float distCorrection = sqrt(a1 * a1 * scale1 + a2 * a2 * scale2 + 1.f)
@@ -178,6 +182,12 @@ __global__ void cone_fp(
         float coord2 = a2 * (startSlice - .5f * c.nSlices(volX, volY, volZ) + .5f)
             + b2 + .5f * c.nDim2(volX, volY, volZ);
 
+//        if (row == 0 and angle == 1 and row == startRow and column == 0) {
+//            printf("%d %d %d \n", volX, volY, volZ);
+//            printf("%f %f %f \n", coord0, coord1, coord2);
+//            printf("%f %f %f %f \n", a1, a2, b1, b2);
+//            printf("%f %f %f \n", detX, detY, detZ);
+//        }
 
         float val = 0.f;
         for (int s = startSlice; s < endSlice; ++s) {
@@ -187,13 +197,16 @@ __global__ void cone_fp(
             coord1 += a1;
             coord2 += a2;
 //            if (startRow == 0 and column == 0 and angle == 0 and s == startSlice) {
-//            printf("%f %f %f %f\n", coord0, coord1, coord2, val);
+//                printf("%f %f %f %f\n", coord0, coord1, coord2, val);
 //            }
         }
         val *= distCorrection;
 
-        projections[angle * detectorRows * detectorCols
-                    + column * detectorRows
-                    + row] += val;
+//        projections[angle * detectorRows * detectorCols
+//                    + column * detectorRows
+//                    + row] += val;
+//        projections[angle][column * detectorRows + row] += val;
+//        projections[angle][column * detectorRows + row] += val;
+        projections[angle][row * detectorCols + column] += val;
     }
 }

@@ -36,7 +36,7 @@ struct Params {
 	float4 denominator;
 };
 
-__constant__ Params params[{{ max_angles }}];
+__constant__ Params params[{{ nr_projs_global }}];
 
 __device__ __forceinline__
 void volumeAdd(
@@ -48,10 +48,6 @@ void volumeAdd(
     vol[  z * voxelsX * voxelsY
         + y * voxelsX
         + x] += val;
-
-//    vol[  z * voxelsZ * voxelsY
-//        + y * voxelsZ
-//        + x] += val;
 }
 
 template<bool FDKWEIGHT>
@@ -66,7 +62,7 @@ void cone_bp(
     int voxelsZ,
     float outputScale
 ) {
-	int endAngle = startAngle + {{ angles_per_block }};
+	int endAngle = startAngle + {{ nr_projs_block }};
 	if (endAngle > nrAngles)
 		endAngle = nrAngles;
 
@@ -109,6 +105,9 @@ void cone_bp(
 				U = numU * r;
 				V = numV * r;
 				float val = tex3D(projTexture, U, V, angle);
+//				if (a == 0) {
+//                    printf("%f %f %f %f %f\n", r, U, V, angle, val);
+//                }
 				Z[z] += r * r * val;
 
 				numU += nU.z;

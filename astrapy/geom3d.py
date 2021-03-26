@@ -8,12 +8,6 @@ class Flat2DDetector:
     Note that you can initialize detectors with or without binned pixels,
     rows and cols, there is no distinction on the software level.
     """
-    # Reference axis of the detector plane w.r.t. the world frame
-    # see: BaseStaticGeometry
-    AXIS_HORIZONTAL = [0, 1, 0]
-    AXIS_VERTICAL = [0, 0, 1]
-
-
     def __init__(self, rows, cols, pixel_width, pixel_height):
         """
         :param rows: Number of horizontal rows
@@ -45,9 +39,17 @@ class Flat2DDetector:
     def rows(self):
         return self._rows
 
+    @rows.setter
+    def rows(self, value):
+        self._rows = value
+
     @property
     def cols(self):
         return self._cols
+
+    @cols.setter
+    def cols(self, value):
+        self._cols = value
 
     @property
     def width(self):
@@ -56,6 +58,10 @@ class Flat2DDetector:
     @property
     def height(self):
         return self.pixel_height * self.rows
+
+    @property
+    def pixel_volume(self):
+        return self.pixel_width * self.pixel_height
 
 
 class SquarePixelDetector(Flat2DDetector):
