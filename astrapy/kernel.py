@@ -1,26 +1,19 @@
-import copy
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Sequence, Sized
 
 import cupy as cp
 import cupy.cuda.texture as txt
 import jinja2
 import numpy as np
 from cupy.core.raw import RawModule
-from cupy.cuda.runtime import cudaAddressModeBorder, \
-    cudaChannelFormatKindFloat, cudaFilterModeLinear, cudaReadModeElementType, \
-    cudaResourceTypeArray
+from cupy.cuda.runtime import (
+    cudaAddressModeBorder, cudaChannelFormatKindFloat, cudaFilterModeLinear,
+    cudaReadModeElementType, cudaResourceTypeArray)
 
 
 def _cupy_copy_to_texture(obj) -> txt.TextureObject:
-    """Creates a 2D / 3D texture of float format"""
+    """Creates a single-channel 2D/3D texture object of type float"""
     assert obj.ndim in [2, 3]
-
-    # TODO(Adriaan): how do I choose these values?
-    # TODO(Adriaan): do I have a precision choice?
-    channel_desc = txt.ChannelFormatDescriptor(32, 0, 0, 0,
-                                               cudaChannelFormatKindFloat)
 
     # We're using an CUDA array resource type, which I think makes a copy,
     # but has more efficient access, compared to linear memory. I can imagine
@@ -30,24 +23,27 @@ def _cupy_copy_to_texture(obj) -> txt.TextureObject:
     #  do I need Fortran order? Or is this maybe an inconsistency in
     #  the CUDA/Cupy interface?
     # TODO: test in 3D
-    texture_array = txt.CUDAarray(channel_desc, *reversed(obj.shape))
-    texture_array.copy_from(obj)
+    channel_desc = txt.ChannelFormatDescriptor(
+        32, 0, 0, 0, cudaChannelFormatKindFloat)
+    cuda_array = txt.CUDAarray(channel_desc, *reversed(obj.shape))
+    cuda_array.copy_from(obj)
 
     resource_desc = txt.ResourceDescriptor(
-        cudaResourceTypeArray,
-        cuArr=texture_array)
+        cudaResourceTypeArray, cuArr=cuda_array)
     texture_desc = txt.TextureDescriptor(
         [cudaAddressModeBorder] * obj.ndim,
-        # address modes for all dims of the object
         cudaFilterModeLinear,  # filter modebase = {NoneType} None
         cudaReadModeElementType)
-
     return txt.TextureObject(resource_desc, texture_desc)
 
 
-def _cupy_copy_to_constant(module, name: str, array, dtype=np.float32):
+def _cupy_copy_to_constant(
+    module: RawModule,
+    name: str,
+    array,
+    dtype=np.float32):
     """Copy array to constant memory
-    Inspired from: https://github.com/cupy/cupy/issues/1703
+    Inspired by: https://github.com/cupy/cupy/issues/1703
     See also: https://docs.chainer.org/en/v1.3.1/_modules/cupy/creation/from_data.html
 
     TODO: would it be faster to use `p.copy_from_device` instead?
@@ -136,65 +132,3 @@ class Kernel(ABC):
             assert self._compilation_result is not None
 
         return self._compilation_result
-
-
-def _compat_swap_geoms(geometries):
-    for geom in geometries:
-        _swp = lambda x: np.array([x[2], x[1], x[0]])
-
-        # if swap_uv:
-        #     tmp = geom.v[:]
-        #     geom.v[:] = geom.u[:]
-        #     geom.u[:] = tmp
-        #     tmp = geom.detector.pixel_width
-        #     geom.detector.pixel_width = geom.detector.pixel_height
-        #     geom.detector.pixel_height = tmp
-        #     tmp = geom.detector.rows
-        #     geom.detector.rows = geom.detector.cols
-        #     geom.detector.cols = tmp
-
-        geom.u[:] = _swp(geom.u[:])
-        geom.v[:] = _swp(geom.v[:])
-        geom.tube_position[:] = _swp(geom.tube_position[:])
-        geom.detector_position[:] = _swp(geom.detector_position[:])
-
-
-def _prep_geom3d(geometries,
-                 volume_extent_min,
-                 volume_extent_max,
-                 volume_voxel_size):
-    converted = copy.deepcopy(geometries)
-
-    # convert angles so that detector position is not the center point but the edge point
-    # TODO: I should use decorator patterns here on geometries
-    # shift to the center of the geom
-    dx = -(volume_extent_min[0] + volume_extent_max[0]) / 2
-    dy = -(volume_extent_min[1] + volume_extent_max[1]) / 2
-    dz = -(volume_extent_min[2] + volume_extent_max[2]) / 2
-    for ngeom, geom in zip(converted, geometries):
-        ngeom.tube_position[:] = ngeom.tube_position + [dx, dy, dz]
-        ngeom.detector_position[:] = ngeom.detector_position + [dx, dy, dz]
-
-    scale = np.array(volume_voxel_size)
-    print(f"scale {1/scale}")
-    for ngeom in converted:
-        # detector pixels have to be scaled first, because
-        # detector.width and detector.height need to be scaled accordingly
-        horiz_pixel_vector = (ngeom.u * ngeom.detector.pixel_width) / scale
-        new_pixel_width = np.linalg.norm(horiz_pixel_vector)
-        new_u_unit = horiz_pixel_vector / new_pixel_width
-        ngeom.detector.pixel_width = new_pixel_width
-        ngeom.u = new_u_unit
-
-        vert_pixel_vector = (ngeom.v * ngeom.detector.pixel_height) / scale
-        new_pixel_height = np.linalg.norm(vert_pixel_vector)
-        new_v_unit = vert_pixel_vector / new_pixel_height
-        ngeom.detector.pixel_height = new_pixel_height
-        ngeom.v = new_v_unit
-
-        ngeom.tube_position[:] = ngeom.tube_position[:] / scale
-        ngeom.detector_position[:] = ngeom.detector_position[:] / scale
-
-    return converted
-
-

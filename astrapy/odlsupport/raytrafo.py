@@ -17,10 +17,10 @@ def _cone_2d_to_geom2d(geometry):
 
     geoms = list()
     for i, angle in enumerate(vecs):
-        det = astrapy.Flat1DDetector(
+        det = astrapy.geom2d.Flat1DDetector(
             geometry.detector.size,
             geometry.det_partition.cell_sides[0])
-        geoms.append(astrapy.Static2DGeometry(
+        geoms.append(astrapy.geom2d.Static2DGeometry(
             tube_pos=vecs[i, :2],
             det_pos=vecs[i, 2:4],
             det_rotation=geometry.angles[i],
@@ -30,7 +30,28 @@ def _cone_2d_to_geom2d(geometry):
 
 
 def _cone_3d_to_geom3d(geometry):
-    det = astrapy.Flat2DDetector(
+    def _compat_swap_geoms(geometries):
+        for geom in geometries:
+            _swp = lambda x: np.array([x[2], x[1], x[0]])
+
+            # if swap_uv:
+            #     tmp = geom.v[:]
+            #     geom.v[:] = geom.u[:]
+            #     geom.u[:] = tmp
+            #     tmp = geom.detector.pixel_width
+            #     geom.detector.pixel_width = geom.detector.pixel_height
+            #     geom.detector.pixel_height = tmp
+            #     tmp = geom.detector.rows
+            #     geom.detector.rows = geom.detector.cols
+            #     geom.detector.cols = tmp
+
+            geom.u[:] = _swp(geom.u[:])
+            geom.v[:] = _swp(geom.v[:])
+            geom.tube_position[:] = _swp(geom.tube_position[:])
+            geom.detector_position[:] = _swp(geom.detector_position[:])
+
+
+    det = astrapy.geom3d.Flat2DDetector(
         rows=geometry.detector.shape[0],
         cols=geometry.detector.shape[1],
         pixel_width=geometry.det_partition.cell_sides[1],
@@ -39,13 +60,15 @@ def _cone_3d_to_geom3d(geometry):
     geoms = list()
     for angle in zip(geometry.angles):
         det_axes = np.moveaxis(geometry.det_axes(angle), -2, 0)
-        geoms.append(astrapy.AstraStatic3DGeometry(
+        geoms.append(astrapy.geom3d.AstraStatic3DGeometry(
             tube_pos=geometry.src_position(angle)[0],
             det_pos=
             geometry.det_point_position(angle, geometry.det_params.mid_pt)[0],
             u_unit=det_axes[1][0],
             v_unit=det_axes[0][0],
             detector=copy.deepcopy(det)))
+
+    _compat_swap_geoms(geoms)
 
     return geoms
 
@@ -121,7 +144,8 @@ class RayTrafoImpl:
                 vol_data.data,
                 geom,
                 volume_extent_min=self.vol_space.min_pt,
-                volume_extent_max=self.vol_space.max_pt)
+                volume_extent_max=self.vol_space.max_pt,
+                chunk_size=1200)
 
             # TODO: issue #2
             out[:] = np.reshape(sino, self.proj_space.shape)
@@ -181,7 +205,8 @@ class RayTrafoImpl:
                         geom,
                         volume_shape=self.vol_space.shape,
                         volume_extent_min=self.vol_space.min_pt,
-                        volume_extent_max=self.vol_space.max_pt)
+                        volume_extent_max=self.vol_space.max_pt,
+                        filter=None)
         else:
             raise NotImplementedError(
                 'Unknown AstraPy geometry type {!r}, incorrect detector,'

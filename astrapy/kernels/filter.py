@@ -25,13 +25,13 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 """
 import warnings
-from typing import Any
+from typing import Any, Sequence
 
 import cupy as cp
 import numpy as np
-from tqdm import tqdm
 
 from astrapy.kernel import Kernel
+from astrapy.kernels.conebeam import _shift_and_scale
 
 
 class Filter(Kernel):
@@ -48,65 +48,26 @@ class Filter(Kernel):
             det_block_u=self.DET_BLOCK_U,
             det_block_v=self.DET_BLOCK_V,
             angles_per_weight_block=self.ANGLES_PER_WEIGHT_BLOCK)
-        rescaleIFFT = module.get_function("rescaleInverseFourier")
-        preweight = module.get_function("preweight")
-        return module, {
-            'rescaleIFFT': rescaleIFFT,
-            'preweight': preweight}
-
-    # def _filter(self, projections, filter):
-    #     # TODO(Adriaan) assert rpojections are all of same size
-    #     # The filtering is a regular ramp filter per detector line.
-    #     for row in range(projections.shape[1]):
-    #         # run filter for all projections simultaneously
-    #         print(row)
-    #         
-    #         fourier_rows = cp.fft.rfft(cp.array([p[row] for p in projections]))
-    # 
-    #         # sinoFFT must have size nr_projs * HALF_nr_cols?
-    #         # TODO: bring back
-    #         # Because the input is real, the Fourier transform is symmetric.
-    #         # CUFFT only outputs the first half (ignoring the redundant second half),
-    #         # and expects the same as input for the IFFT.
-    #         # if pfFilter == 0:
-    #         #     genCuFFTFilter(
-    #         #         FILTER_RAMLAK,
-    #         #         nr_projs, pHostFilter, iPaddedDetCount, iHalfFFTSize)
-    #         # else:
-    #         #     for i in range(nr_projs * iHalfFFTSize):
-    #         #         pHostFilter[i].x = pfFilter[i]
-    #         #         pHostFilter[i].y = 0
-    #         # half_nr_cols = fourier_rows.shape[1] // 2 + 1
-    #         filter = cp.zeros(fourier_rows.shape[1],
-    #                           dtype=cp.complex64)  # TODO(Adriaan): 128?
-    # 
-    #         for i in range(len(filter)):
-    #             filter[i].real = 0.
-    #             filter[i].imag = 1.
-    # 
-    #         fourier_rows *= filter
-    # 
-    #         # ouput iFFT in buffer
-    #         _buffer = cp.fft.irfft(fourier_rows, norm=None)
-    #         for i, proj in enumerate(projections):
-    #             proj[row, :] = _buffer[i, :]
+        return module, {'preweight': module.get_function("preweight")}
 
     def _filter(self, projections):
-        ramlak = cp.linspace(-1, 1, num=projections.shape[2] // 2 + 1)
-        ramlak = np.abs(ramlak)
-        for row in tqdm(range(projections.shape[1])):
+        ramlak = cp.linspace(-1, 1, num=projections[0].shape[1] // 2 + 1)
+        ramlak = cp.abs(ramlak)
+        for row in range(projections[0].shape[0]):
             projrows = cp.array([p[row] for p in projections])
             fourier_projs = cp.fft.fftshift(cp.fft.rfft(projrows))
-            fourier_projs *= ramlak
+            fourier_projs *= ramlak  # complex mult
             out = cp.fft.irfft(cp.fft.ifftshift(fourier_projs))
             for p, outrow in zip(projections, out):
                 p[row] = outrow
-
 
     def __call__(self,
                  projections: list,
                  geoms: list,
                  filter: Any,
+                 volume_extent_min: Sequence,
+                 volume_extent_max: Sequence,
+                 voxel_size: Sequence,
                  short_scan: bool = False):
         for proj in projections:
             if not isinstance(proj, cp.ndarray):
@@ -116,6 +77,15 @@ class Filter(Kernel):
         # Only those that are vertical sub-geometries
         # (cf. CompositeGeometryManager) of regular cone geometries.
         assert len(geoms) > 0
+
+        # # TODO: to do preweighting I need volume info here.
+        import copy
+        geoms = copy.deepcopy(geoms)
+        [_shift_and_scale(g,
+                          volume_extent_min,
+                          volume_extent_max,
+                          voxel_size)
+         for g in geoms]
 
         # TODO(Adriaan): assert geometry consistency
         g0 = geoms[0]
@@ -128,20 +98,13 @@ class Filter(Kernel):
         if g0.u[2] != 0:
             warnings.warn("Filter only works for geometries "
                           "in the horizontal plane.")
-
         # TODO(Adriaan): this feels sketchy
         # assuming U is in the XY plane, V is parallel to Z axis
-        det_cx, det_cy = (
-            g0.detector_position[:2]
-            + .5 * nr_cols * g0.u[:2] * g0.detector.pixel_width)
-        det_cz = (
-            g0.detector_position[2]
-            + .5 * nr_rows * g0.v[2] * g0.detector.pixel_height)
-
+        det_cx, det_cy = (g0.detector_position
+                          + .5 * g0.u * g0.detector.width)[:2]
         tube_origin = np.linalg.norm(g0.tube_position[:2])
-        det_origin = np.linalg.norm([det_cx, det_cy])
-        det_u_size = np.linalg.norm(g0.u[:2] * g0.detector.pixel_width)
-        det_v_size = abs(g0.detector_position[2] * g0.detector.pixel_height)
+        det_origin = np.linalg.norm(np.array([det_cx, det_cy]))
+        det_cz = (g0.detector_position + .5 * g0.v[2] * g0.detector.height)[2]
         z_shift = det_cz - g0.tube_position[2]
 
         # TODO(ASTRA): FIXME: Sign/order
@@ -161,21 +124,20 @@ class Filter(Kernel):
 
         proj_pointers = cp.array([p.data.ptr for p in projections])
 
-        # funcs['preweight'](
-        #     (dimgrid_x, dimgrid_y),
-        #     (self.DET_BLOCK_U, self.ANGLES_PER_WEIGHT_BLOCK),
-        #     (
-        #         proj_pointers,
-        #         0,
-        #         len(angles),
-        #         tube_origin,
-        #         det_origin,
-        #         z_shift,
-        #         det_u_size,
-        #         det_v_size,
-        #         nr_geoms,
-        #         nr_cols,
-        #         nr_rows))
+        funcs['preweight'](
+            (dimgrid_x, dimgrid_y),
+            (self.DET_BLOCK_U, self.ANGLES_PER_WEIGHT_BLOCK),
+            (proj_pointers,
+             0,
+             len(angles),
+             cp.float32(tube_origin),
+             cp.float32(det_origin),
+             cp.float32(z_shift),
+             cp.float32(g0.detector.pixel_width),
+             cp.float32(g0.detector.pixel_height),
+             nr_geoms,
+             nr_cols,
+             nr_rows))
 
         cp.cuda.Device().synchronize()
 

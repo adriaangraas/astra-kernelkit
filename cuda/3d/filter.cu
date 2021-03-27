@@ -26,108 +26,63 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 -----------------------------------------------------------------------
 */
-//__global__
-//static void applyFilter(
-//    int _iProjectionCount,
-//    int _iFreqBinCount,
-//    cufftComplex * sinogram,
-//    cufftComplex * filter
-//) {
-//	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-//	const int iProjectionIndex = idx / _iFreqBinCount;
-//
-//	if (iProjectionIndex >= _iProjectionCount)
-//		return;
-//
-//	float A = sinogram[idx].x;
-//	float B = sinogram[idx].y;
-//	float C = filter[idx].x;
-//	float D = filter[idx].y;
-//
-//    // I think this is just complex multiplications
-//	sinogram[idx].x = A * C - B * D;
-//	sinogram[idx].y = A * D + C * B;
-//}
-
 extern "C" {
+    /**
+     * TODO(ASTRA): To support non-cube voxels, preweighting needs per-view
+     * parameters. NB: Need to properly take into account the
+     * anisotropic volume normalization done for that too.
+     */
+    __global__
+    void preweight(
+        float ** projections,
+        unsigned int startAngle,
+        unsigned int endAngle,
+        float srcOrigin,
+        float detOrigin,
+        float zShift,
+        float detUSize,
+        float detVSize,
+        int nrProjections,
+        int nrCols,
+        int nrRows
+    ) {
+        int angle = startAngle
+            + blockIdx.y * {{angles_per_weight_block}}
+            + threadIdx.y;
 
-__global__
-void rescaleInverseFourier(
-    int _iProjectionCount,
-    int _iDetectorCount,
-    float * _pfInFourierOutput
-) {
-	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	const int iProjectionIndex = idx / _iDetectorCount;
-	const int iDetectorIndex = idx % _iDetectorCount;
+        if (angle >= endAngle)
+            return;
 
-	if (iProjectionIndex >= _iProjectionCount)
-		return;
+        const int column = (
+                blockIdx.x % ((nrCols  + {{ det_block_u }} - 1) / {{ det_block_u }})
+            ) * {{ det_block_v }} + threadIdx.x;
+        const int startRow = (
+                blockIdx.x / ((nrCols  + {{ det_block_u }} - 1) / {{ det_block_u }})
+            ) * {{ det_block_v }};
 
-	_pfInFourierOutput[iProjectionIndex * _iDetectorCount + iDetectorIndex]
-        /= (float) _iDetectorCount;
-}
+        int endRow = startRow + {{ det_block_v }};
+        if (endRow > nrRows)
+            endRow = nrRows;
 
-/**
- * TODO(ASTRA): To support non-cube voxels, preweighting needs per-view
- * parameters. NB: Need to properly take into account the
- * anisotropic volume normalization done for that too.
- */
-__global__
-void preweight(
-    float ** projections,
-    unsigned int startAngle,
-    unsigned int endAngle,
-    float srcOrigin,
-    float detOrigin,
-    float zShift,
-    float detUSize,
-    float detVSize,
-    int nrProjections,
-    int nrCols,
-    int nrRows
-) {
-	int angle = startAngle
-        + blockIdx.y * {{angles_per_weight_block}}
-        + threadIdx.y;
+        // We need the length of the central ray and the length of the ray(s) to
+        // our detector pixel(s).
+        const float U = (column - .5f * nrCols  + .5f) * detUSize;
+        float V = (startRow - .5f * nrRows + .5f) * detVSize + zShift;
+        const float centralRayLength = srcOrigin + detOrigin;
+        const float T = centralRayLength * centralRayLength + U * U;
 
-	if (angle >= endAngle)
-		return;
+        // Contributions to the weighting factors:
+        // fCentralRayLength / fRayLength   : the main FDK preweighting factor
+        // fSrcOrigin / (fDetUSize * fCentralRayLength)
+        //                                  : to adjust the filter to the det width
+        // pi / (2 * iProjAngles)           : scaling of the integral over angles
+        const float W2 = centralRayLength / (detUSize * srcOrigin);
+        const float W = centralRayLength * W2 * (M_PI / 2.f) / (float) nrProjections;
 
-	const int column = (
-            blockIdx.x % ((nrCols  + {{ det_block_u }} - 1) / {{ det_block_u }})
-        ) * {{ det_block_v }} + threadIdx.x;
-	const int startDetectorV = (
-            blockIdx.x / ((nrCols  + {{ det_block_u }} - 1) / {{ det_block_u }})
-        ) * {{ det_block_v }};
-
-	int endDetectorV = startDetectorV + {{ det_block_v }};
-	if (endDetectorV > nrRows)
-		endDetectorV = nrRows;
-
-	// We need the length of the central ray and the length of the ray(s) to
-	// our detector pixel(s).
-	const float U = (column - .5f * nrCols  + .5f) * detUSize;
-	float V = (startDetectorV - .5f * nrRows + .5f) * detVSize + zShift;
-	const float centralRayLength = srcOrigin + detOrigin;
-	const float T = centralRayLength * centralRayLength + U * U;
-
-	// Contributions to the weighting factors:
-	// fCentralRayLength / fRayLength   : the main FDK preweighting factor
-	// fSrcOrigin / (fDetUSize * fCentralRayLength)
-	//                                  : to adjust the filter to the det width
-	// pi / (2 * iProjAngles)           : scaling of the integral over angles
-	const float W2 = centralRayLength / (detUSize * srcOrigin);
-	const float W = centralRayLength * W2 * (M_PI / 2.f) / (float) nrProjections;
-
-	for (int row = startDetectorV; row < endDetectorV; ++row) {
-		const float rayLength = sqrtf(T + V * V);
-		const float weight = W / rayLength;
-//		projData[(row * nrProjections + angle) * projPitch
-//		         + column] *= weight;
-        projections[angle][row * nrCols + column] *= weight;
-		V += detVSize;
-	}
-}
-
+        for (int row = startRow; row < endRow; ++row) {
+            const float rayLength = sqrtf(T + V * V);
+            projections[angle][row * nrCols + column] *= W / rayLength;
+            V += detVSize;
+        }
+    }
 }

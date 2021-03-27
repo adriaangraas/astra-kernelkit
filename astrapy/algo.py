@@ -1,10 +1,10 @@
 from typing import Any, Sequence, Sized
 
 import numpy as np
-import cupy as cp
 from tqdm import tqdm
 
 from astrapy import kernels
+
 
 def fp(
     volume: Any,
@@ -44,7 +44,7 @@ def fp(
             d = np.zeros((g.detector.cols, g.detector.rows))
             projections_cpu.append(d)
 
-    executor = kernels.ConeProjectionChunkIterator(
+    executor = kernels.chunk_coneprojection(
         kernel,
         volume=volume,
         volume_extent_min=volume_extent_min,
@@ -68,7 +68,6 @@ def bp(
     volume_extent_max: Sequence,
     chunk_size: int = 1000,
     filter: str = 'ram_lak',
-    filter_short_scan: bool = False,
     **kwargs):
     """
     Executes `kernel`
@@ -95,9 +94,9 @@ def bp(
 
     if chunk_size is None:
         # TODO: allow None and auto infer good chunk size
-
         raise NotImplementedError()
-    executor = kernels.ConeBackprojectionChunkIterator(
+
+    executor = kernels.chunk_conebackprojection(
         kernels.ConeBackprojection(),
         projections_cpu=projections,
         geometries=geometry,

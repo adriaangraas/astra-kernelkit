@@ -7,12 +7,12 @@ import numpy as np
 
 def voxel_size(volume_shape: Sequence,
                extent_min: Sequence,
-               extent_max: Sequence) -> tuple:
+               extent_max: Sequence) -> np.ndarray:
     """The physical size of a voxel."""
     n = np.array(volume_shape)
     dists = np.array(extent_max) - np.array(extent_min)
     shp = list(dists / n)
-    return tuple(shp)
+    return np.array(shp)
 
 
 def has_isotropic_voxels(volume_shape: Sequence,

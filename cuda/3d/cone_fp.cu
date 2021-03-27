@@ -110,7 +110,6 @@ __global__ void cone_fp(
     unsigned int volX,
     unsigned int volY,
     unsigned int volZ,
-    unsigned int projAngles,
     unsigned int detectorCols,
     unsigned int detectorRows,
     float scale1,
@@ -135,9 +134,6 @@ __global__ void cone_fp(
     const float dSX = detsSX[angle] + .5f * dUX + .5f * dVX;
     const float dSY = detsSY[angle] + .5f * dUY + .5f * dVY;
     const float dSZ = detsSZ[angle] + .5f * dUZ + .5f * dVZ;
-//    if (angle == 1) {
-//        printf("%f %f %f %f %f %f %f %f %f %f %f %f\n", sX, sY, sZ, dUX, dUY, dUZ, dVX, dVY, dVZ, dSX, dSY, dSZ);
-//    }
 
     const int rowsInBlock = (detectorCols + {{ columns_per_block }} - 1)
                             / {{ columns_per_block }};
@@ -182,13 +178,6 @@ __global__ void cone_fp(
         float coord2 = a2 * (startSlice - .5f * c.nSlices(volX, volY, volZ) + .5f)
             + b2 + .5f * c.nDim2(volX, volY, volZ);
 
-//        if (row == 0 and angle == 1 and row == startRow and column == 0) {
-//            printf("%d %d %d \n", volX, volY, volZ);
-//            printf("%f %f %f \n", coord0, coord1, coord2);
-//            printf("%f %f %f %f \n", a1, a2, b1, b2);
-//            printf("%f %f %f \n", detX, detY, detZ);
-//        }
-
         float val = 0.f;
         for (int s = startSlice; s < endSlice; ++s) {
             // add interpolated voxel value at current coordinate
@@ -196,17 +185,9 @@ __global__ void cone_fp(
             coord0 += 1.f;
             coord1 += a1;
             coord2 += a2;
-//            if (startRow == 0 and column == 0 and angle == 0 and s == startSlice) {
-//                printf("%f %f %f %f\n", coord0, coord1, coord2, val);
-//            }
         }
         val *= distCorrection;
 
-//        projections[angle * detectorRows * detectorCols
-//                    + column * detectorRows
-//                    + row] += val;
-//        projections[angle][column * detectorRows + row] += val;
-//        projections[angle][column * detectorRows + row] += val;
         projections[angle][row * detectorCols + column] += val;
     }
 }

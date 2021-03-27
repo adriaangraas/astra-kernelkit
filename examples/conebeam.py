@@ -38,10 +38,10 @@ reco_space = odl.uniform_discr(min_pt=[-x//2, -x, -x*2], max_pt=[x//2, x, x*2],
 # reco_space = odl.uniform_discr(min_pt=[-x, -x, -x], max_pt=[x, x, x],
 #                                shape=[y, y, y], dtype='float32')
 
-nr_angles = 50
+nr_angles = 5000
 angle_partition = odl.uniform_partition(0, 2 * np.pi, nr_angles)
 # Detector uniformly sampled, n = 512, min = -30, max = 30
-q = 13.45
+q = 123.45
 r = 128*2
 detector_partition = odl.uniform_partition(min_pt=[-q, -2*q],
                                            max_pt=[q, 2*q],

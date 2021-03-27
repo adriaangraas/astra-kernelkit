@@ -1,8 +1,9 @@
 from typing import Any
 
+import cupy as cp
 import numpy as np
 import reflex
-from reflex import centralize, prepare_projs
+from reflex import centralize
 
 from astrapy import bp
 from astrapy.geom3d import AstraStatic3DGeometry, Flat2DDetector
@@ -13,24 +14,18 @@ class Reconstruction:
                  path: str,
                  settings_path: str = None,  # defaults to path
                  proj_range: range = None,
-                 prepf=prepare_projs,
                  corrections=None,
-                 det_subsampling=1,
                  verbose=True,
                  ):
         self._path = path
-
         if settings_path is None:
             settings_path = path
-        self._settings_path = path
 
+        self._settings_path = path
         self._settings = reflex.Settings.from_path(settings_path)
         self._proj_range = proj_range
-
-        self.prepf = prepf
         self.verbose = verbose
         self.corrections = corrections
-        self.det_subsampling = det_subsampling
 
     @property
     def settings(self):
@@ -39,25 +34,18 @@ class Reconstruction:
     def load_sinogram(self,
                       projs_path: str = None,
                       darks_path: str = None,
-                      flats_path: str = None,
-                      ):
+                      flats_path: str = None):
         if projs_path is None:
             projs_path = self._path
-
         if darks_path is None:
             darks_path = self._path
-
         if flats_path is None:
             flats_path = self._path
 
         # Preprocess and convert into C-order float32 ASTRA projection data
-        return self.prepf(
-            reflex.projs(projs_path, self._proj_range),
-            reflex.darks(darks_path),
-            reflex.flats(flats_path),
-            downsampling=self.det_subsampling,
-            verbose=self.verbose,
-            transpose=None)
+        return (reflex.projs(projs_path, self._proj_range),
+                reflex.darks(darks_path),
+                reflex.flats(flats_path))
 
     def geom(self, angles, corrections: Any = True, verbose=None):
         if verbose is None:
@@ -77,7 +65,6 @@ class Reconstruction:
                                  "select which angles belong to these projections.")
 
         geoms = []
-        # reflex.dynamic_geom_to_astra_vectors()
         for i, (t, static_geom) in enumerate(geom.to_dict().items()):
             g = centralize(static_geom)
             hv = g.stage_rotation_matrix @ [0, 1, 0]
@@ -90,15 +77,14 @@ class Reconstruction:
                 pixel_width=g.detector.pixel_width,
                 pixel_height=g.detector.pixel_height
             )
-            _swp = lambda x: np.array([x[2], x[0], x[1]])
-
+            # _swp = lambda x: np.array([x[2], x[0], x[1]])
+            _swp = lambda x: x
             geom = AstraStatic3DGeometry(
                 tube_pos=_swp(g.tube_position),
                 det_pos=_swp(g.detector_position),
                 u_unit=_swp(hv),
                 v_unit=_swp(vv),
                 detector=det)
-
             geoms.append(geom)
 
         return geoms
@@ -131,13 +117,6 @@ class Reconstruction:
         voxel_width /= scaling
         voxel_height /= scaling
 
-        # compensate for detector subsampling
-        if self.det_subsampling != 1:
-            # TODO(Adriaan): I have to check this after fixing a bug
-            raise NotImplementedError()
-            voxel_width /= self.det_subsampling
-            voxel_height /= self.det_subsampling
-
         # compute total volume size based on the rounded voxel size
         width_from_center = voxel_width * nr_voxels_x / 2
         height_from_center = voxel_height * nr_voxels_z / 2
@@ -145,7 +124,10 @@ class Reconstruction:
         return nr_voxels_x, nr_voxels_z, width_from_center, height_from_center
 
     def backward(self, projections, geometry,
-                 algo='FDK', voxels_x=None, iters=200):
+                 algo='FDK',
+                 voxels_x=None,
+                 iters=200,
+                 fpreproc=None):
         voxels_x, voxels_z, w, h = self._compute_volume_dimensions(voxels_x)
         volume_shape = (voxels_x, voxels_x, voxels_z)
         volume_ext_min, volume_ext_max = (-w, -w, -h), (w, w, h)
@@ -153,9 +135,14 @@ class Reconstruction:
         print("Algorithm starts...")
         algo = algo.lower()
         if algo == 'fdk':
-            vol = bp(projections, geometry,
-                     volume_shape, volume_ext_min, volume_ext_max,
-                     chunk_size=50)
+            vol = bp(projections,
+                     geometry,
+                     volume_shape,
+                     volume_ext_min,
+                     volume_ext_max,
+                     chunk_size=70,
+                     fpreproc=fpreproc,
+                     filter='ram-lak')
         else:
             raise ValueError("Algorithm value incorrect.")
 
@@ -193,18 +180,34 @@ def reconstruct(
     if angles is None:
         angles = np.linspace(0, 2 * np.pi, len(proj_range), endpoint=False)
 
-    projections = rec.load_sinogram(darks_path=darks_path,
-                                    flats_path=flats_path)
+    projections, darks, whites = rec.load_sinogram(darks_path=darks_path,
+                                                  flats_path=flats_path)
+    if len(darks) != 0:
+        if len(darks) > 1:
+            darks = darks.mean(0)
 
-    # plt.figure()
-    # plt.imshow(projections[0])
-    # plt.show()
-    # projections[:] = 1.
+        dark = cp.squeeze(cp.array(darks))
+
+    if len(whites) != 0:
+        if len(whites) > 1:
+            whites = (whites - darks if len(darks) != 0 else whites).mean(0)
+
+        white = cp.squeeze(cp.array(whites))
+
+    def _preproc_projs(projs: cp.ndarray):
+        # remove darkfield from projections
+        cp.subtract(projs, dark, out=projs)
+        # flatfield the projections
+        cp.divide(projs, white, out=projs)
+        cp.log(projs, out=projs)  # take -log to linearize detector values
+        return cp.multiply(projs, -1, out=projs)  # sunny side up
 
     geometry = rec.geom(angles, corrections)
     vol_cpu = rec.backward(
         projections,
-        geometry, voxels_x=voxels_x)
+        geometry,
+        voxels_x=voxels_x,
+        fpreproc=_preproc_projs)
 
     if plot_pyqtgraph:
         import pyqtgraph as pq
@@ -219,44 +222,24 @@ def reconstruct(
     return vol_cpu
 
 
-# def reconstruct_odl():
-#     import odl
-#     dpart = detector_partition_3d(recon_width_length, recon_height_length,
-#                                   DETECTOR_PIXEL_WIDTH,
-#                                   DETECTOR_PIXEL_HEIGHT)
-#     geometry = odl.tomo.ConeBeamGeometry(apart, dpart, SOURCE_RADIUS,
-#                                          DETECTOR_RADIUS)
-#
-#     reco_space_3d = odl.uniform_discr(
-#         min_pt=[-L, -L, -H],
-#         max_pt=[L, L, H],
-#         shape=[n, n, m], dtype=np.float32)
-#     xray_transform = odl.tomo.RayTransform(reco_space_3d, geometry,
-#                                            impl=MyImpl)
-
 if __name__ == '__main__':
     np.set_printoptions(suppress=True)
 
-    path = "/home/adriaan/data/star_fruit"
-    corrections = reflex.motor.Corrections()
-    corrections.tra_det_correction = 24.
-    corrections.tra_obj_correction = -.6
+    path = "/home/adriaan/data/pink_plant"
+    # corrections = reflex.motor.Corrections()
+    # corrections.tra_det_correction = 24.
+    # corrections.tra_obj_correction = -.6
     rec = reconstruct(
         settings_path=path,
         projs_path=path,
         darks_path=path,
         flats_path=path,
-        voxels_x=700,
-        # proj_range=range(0, 1201),
-        # angles=np.arange(0, 2 * np.pi, 2 * np.pi / 1201),
+        voxels_x=400,
+        # proj_range=range(0, 1201, 16),
+        # angles=np.arange(0, 2 * np.pi, 2 * np.pi / 1201 * 16),
         proj_range=range(0, 1201),
         angles=np.arange(0, 2 * np.pi, 2 * np.pi / 1201),
         verbose=True,
         plot_pyqtgraph=True,
-        corrections=corrections,
+        corrections=True,
     )
-
-    # pq.image(rec)
-    # import matplotlib.pyplot as plt
-    # plt.figure()
-    # plt.show()

@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 import numpy as np
 import transforms3d
 
@@ -8,6 +7,7 @@ class Flat2DDetector:
     Note that you can initialize detectors with or without binned pixels,
     rows and cols, there is no distinction on the software level.
     """
+
     def __init__(self, rows, cols, pixel_width, pixel_height):
         """
         :param rows: Number of horizontal rows
@@ -104,7 +104,6 @@ class Static3DGeometry:
         self.__det_pitch = det_pitch
         self.__det_yaw = det_yaw
 
-
     @property
     def tube_position(self):
         return self.__tube_pos
@@ -112,6 +111,12 @@ class Static3DGeometry:
     @property
     def detector_position(self):
         return self.__det_pos
+
+    @property
+    def detector_corner(self):
+        return (self.detector_position
+                - self.v * self.detector.height / 2
+                - self.u * self.detector.width / 2)
 
     @property
     def detector_roll(self):
@@ -128,6 +133,19 @@ class Static3DGeometry:
     @property
     def detector(self) -> Flat2DDetector:
         return self.__detector
+
+    def main_axis(self) -> int:
+        """Helper to determine the main ray-projection direction in
+        conebeam geometries."""
+        d = np.abs(self.tube_position - self.detector_position)
+        if d[0] >= d[1] and d[0] >= d[2]:
+            ax = 0
+        elif d[1] >= d[0] and d[1] >= d[2]:
+            ax = 1
+        else:
+            ax = 2
+
+        return ax
 
     @property
     def u(self):
@@ -226,6 +244,30 @@ class AstraStatic3DGeometry(Static3DGeometry):
                f"Detector {self.detector_position}" + \
                f"U {self.u}" + \
                f"V {self.v}"
+
+
+def shift(geom: Static3DGeometry, shift_vector: np.ndarray):
+    geom.tube_position[:] = geom.tube_position + shift_vector
+    geom.detector_position[:] = geom.detector_position + shift_vector
+
+
+def scale(geom: Static3DGeometry, scaling: np.ndarray):
+    # detector pixels have to be scaled first, because
+    # detector.width and detector.height need to be scaled accordingly
+    horiz_pixel_vector = (geom.u * geom.detector.pixel_width) / scaling
+    new_pixel_width = np.linalg.norm(horiz_pixel_vector)
+    new_u_unit = horiz_pixel_vector / new_pixel_width
+    geom.detector.pixel_width = new_pixel_width
+    geom.u = new_u_unit
+
+    vert_pixel_vector = (geom.v * geom.detector.pixel_height) / scaling
+    new_pixel_height = np.linalg.norm(vert_pixel_vector)
+    new_v_unit = vert_pixel_vector / new_pixel_height
+    geom.detector.pixel_height = new_pixel_height
+    geom.v = new_v_unit
+
+    geom.tube_position[:] = geom.tube_position[:] / scaling
+    geom.detector_position[:] = geom.detector_position[:] / scaling
 
 
 def plot(geoms: dict):
