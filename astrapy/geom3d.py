@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import numpy as np
 import transforms3d
 
@@ -9,47 +11,10 @@ class Flat2DDetector:
     """
 
     def __init__(self, rows, cols, pixel_width, pixel_height):
-        """
-        :param rows: Number of horizontal rows
-        :param cols: Number of vertical columns
-        :param pixel_size: Total pixel size
-        """
-        self._rows = rows
-        self._cols = cols
-        self._pixel_width = pixel_width
-        self._pixel_height = pixel_height
-
-    @property
-    def pixel_width(self):
-        return self._pixel_width
-
-    @pixel_width.setter
-    def pixel_width(self, value):
-        self._pixel_width = value
-
-    @property
-    def pixel_height(self):
-        return self._pixel_height
-
-    @pixel_height.setter
-    def pixel_height(self, value):
-        self._pixel_height = value
-
-    @property
-    def rows(self):
-        return self._rows
-
-    @rows.setter
-    def rows(self, value):
-        self._rows = value
-
-    @property
-    def cols(self):
-        return self._cols
-
-    @cols.setter
-    def cols(self, value):
-        self._cols = value
+        self.rows = rows
+        self.cols = cols
+        self.pixel_width = pixel_width
+        self.pixel_height = pixel_height
 
     @property
     def width(self):
@@ -64,29 +29,6 @@ class Flat2DDetector:
         return self.pixel_width * self.pixel_height
 
 
-class SquarePixelDetector(Flat2DDetector):
-    """A flat detector of which pixel height and width are equal."""
-
-    def __init__(self, rows, cols, pixel_size, pixel_width, pixel_height):
-        """
-        :param rows: Number of horizontal rows
-        :param cols: Number of vertical columns
-        :param pixel_size: Total pixel size
-        """
-        super().__init__(rows, cols, pixel_width, pixel_height)
-        self._rows = rows
-        self._cols = cols
-        self._pixel_size = pixel_size
-
-    @property
-    def pixel_width(self):
-        return self._pixel_size
-
-    @property
-    def pixel_height(self):
-        return self._pixel_size
-
-
 class Static3DGeometry:
     ANGLES_CONVENTION = "sxyz"
 
@@ -96,24 +38,18 @@ class Static3DGeometry:
                  det_roll: float,
                  det_pitch: float,
                  det_yaw: float,
-                 detector: Flat2DDetector):
-        self.__det_pos = det_pos
-        self.__tube_pos = tube_pos
-        self.__detector = detector
+                 detector: Flat2DDetector,
+                 det_piercing: Sequence = None):
+        self.tube_position = tube_pos
+        self.detector_position = det_pos
+        self.detector_piercing = det_piercing if det_piercing else det_pos
+        self.detector = detector
         self.__det_roll = det_roll
         self.__det_pitch = det_pitch
         self.__det_yaw = det_yaw
 
     @property
-    def tube_position(self):
-        return self.__tube_pos
-
-    @property
-    def detector_position(self):
-        return self.__det_pos
-
-    @property
-    def detector_corner(self):
+    def detector_extent_min(self):
         return (self.detector_position
                 - self.v * self.detector.height / 2
                 - self.u * self.detector.width / 2)
@@ -129,23 +65,6 @@ class Static3DGeometry:
     @property
     def detector_yaw(self):
         return self.__det_yaw
-
-    @property
-    def detector(self) -> Flat2DDetector:
-        return self.__detector
-
-    def main_axis(self) -> int:
-        """Helper to determine the main ray-projection direction in
-        conebeam geometries."""
-        d = np.abs(self.tube_position - self.detector_position)
-        if d[0] >= d[1] and d[0] >= d[2]:
-            ax = 0
-        elif d[1] >= d[0] and d[1] >= d[2]:
-            ax = 1
-        else:
-            ax = 2
-
-        return ax
 
     @property
     def u(self):
@@ -183,39 +102,21 @@ class Static3DGeometry:
 
 
 class AstraStatic3DGeometry(Static3DGeometry):
-    def __init__(self, tube_pos, det_pos,
-                 u_unit,
-                 v_unit,
-                 detector):
-        self.__tube_pos = tube_pos
-        self.__det_pos = det_pos
-        self.u = u_unit
-        self.v = v_unit
-        self.__det = detector
-
-    @property
-    def tube_position(self):
-        return self.__tube_pos
-
-    @property
-    def detector_position(self):
-        return self.__det_pos
-
-    @property
-    def detector_roll(self):
-        raise NotImplementedError()
-
-    @property
-    def detector_pitch(self):
-        raise NotImplementedError()
-
-    @property
-    def detector_yaw(self):
-        raise NotImplementedError()
-
-    @property
-    def detector(self) -> Flat2DDetector:
-        return self.__det
+    def __init__(self,
+                 tube_pos: Sequence,
+                 det_pos: Sequence,
+                 u_unit: Sequence,
+                 v_unit: Sequence,
+                 detector,
+                 det_piercing = None):
+        # TODO(Adriaan): unify __init__ or the classes
+        self.tube_position = np.array(tube_pos)
+        self.detector_position = np.array(det_pos)
+        # TODO(Adriaan): detector piercing is only useful for cone?
+        self.detector_piercing = det_piercing if det_piercing else det_pos
+        self.detector = detector
+        self.u = np.array(u_unit)
+        self.v = np.array(v_unit)
 
     @property
     def u(self):
@@ -247,8 +148,8 @@ class AstraStatic3DGeometry(Static3DGeometry):
 
 
 def shift(geom: Static3DGeometry, shift_vector: np.ndarray):
-    geom.tube_position[:] = geom.tube_position + shift_vector
-    geom.detector_position[:] = geom.detector_position + shift_vector
+    geom.tube_position += shift_vector
+    geom.detector_position += shift_vector
 
 
 def scale(geom: Static3DGeometry, scaling: np.ndarray):
@@ -268,6 +169,15 @@ def scale(geom: Static3DGeometry, scaling: np.ndarray):
 
     geom.tube_position[:] = geom.tube_position[:] / scaling
     geom.detector_position[:] = geom.detector_position[:] / scaling
+
+
+def rotate(geom: Static3DGeometry,
+           roll: float = 0., pitch: float = 0., yaw: float = 0.):
+    RT = Static3DGeometry.angles2mat(roll, pitch, yaw).T
+    geom.tube_position = RT @ geom.tube_position
+    geom.detector_position = RT @ geom.detector_position
+    geom.u = RT @ geom.u
+    geom.v = RT @ geom.v
 
 
 def plot(geoms: dict):

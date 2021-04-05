@@ -24,8 +24,6 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 -----------------------------------------------------------------------
 */
-typedef texture<float, 3, cudaReadModeElementType> texture3D;
-
 static const unsigned int volBlockX = {{ vol_block_x }};
 static const unsigned int volBlockY = {{ vol_block_y }};
 static const unsigned int volBlockZ = {{ vol_block_z }};
@@ -38,36 +36,26 @@ struct Params {
 
 __constant__ Params params[{{ nr_projs_global }}];
 
-__device__ __forceinline__
-void volumeAdd(
-    float * vol,
-    int voxelsX, int voxelsY, int voxelsZ,
-    int x, int y, int z,
-    float val
-) {
-    vol[  z * voxelsX * voxelsY
-        + y * voxelsX
-        + x] += val;
-}
-
-template<bool FDKWEIGHT>
 __global__
 void cone_bp(
-    texture3D projTexture,
+{% if texture3D %}
+    texture<float, 3, cudaReadModeElementType> projTexture,
+{% else %}
+    cudaTextureObject_t * projTextures,
+{% endif %}
     float * volume,
-    int startAngle,
-    int nrAngles,
+    int start,
+    int nrProjections,
     int voxelsX,
     int voxelsY,
     int voxelsZ,
     float outputScale
 ) {
-	int endAngle = startAngle + {{ nr_projs_block }};
-	if (endAngle > nrAngles)
-		endAngle = nrAngles;
+	int end= start + {{ nr_projs_block }};
+	if (end > nrProjections)
+		end = nrProjections;
 
-    // TODO(Adriaan): why not use blockDim?
-    const int n = ((voxelsX + volBlockX - 1) / volBlockX);
+    const int n = (voxelsX + volBlockX - 1) / volBlockX;
 	const int X = blockIdx.x % n * volBlockX + threadIdx.x;
 	const int Y = blockIdx.x / n * volBlockY + threadIdx.y;
 
@@ -83,32 +71,31 @@ void cone_bp(
 
     // init Z to zero
 	float Z[{{ vol_block_z }}];
-	for(int i=0; i < {{ vol_block_z }}; i++)
+	for (int i = 0; i < {{ vol_block_z }}; ++i)
 		Z[i] = .0f;
 
     // scope hints the compiler to clean up variables?
 	{
-		float angle = startAngle + .5f;
-		for (int a = startAngle; a < endAngle; ++a, angle += 1.f) {
-			float4 nU = params[a].numeratorU;
-			float4 nV = params[a].numeratorV;
-			float4 d  = params[a].denominator;
+		for (int j = start; j < end; ++j) {
+			float4 nU = params[j].numeratorU;
+			float4 nV = params[j].numeratorV;
+			float4 d  = params[j].denominator;
 
 			float numU = nU.w + fX * nU.x + fY * nU.y + fZ * nU.z;
 			float numV = nV.w + fX * nV.x + fY * nV.y + fZ * nV.z;
-			float den  = (FDKWEIGHT ? 1.f : d.w) + fX * d.x + fY * d.y + fZ * d.z;
+			float den  = d.w  + fX * d.x  + fY * d.y  + fZ * d.z;
 
 			float r, U, V;
-			for (int z = 0; z < {{ vol_block_z }}; z++) {
+			for (int i = 0; i < {{ vol_block_z }}; ++i) {
 				r = __fdividef(1.f, den);
-
 				U = numU * r;
 				V = numV * r;
-				float val = tex3D(projTexture, U, V, angle);
-//				if (a == 0) {
-//                    printf("%f %f %f %f %f\n", r, U, V, angle, val);
-//                }
-				Z[z] += r * r * val;
+{% if texture3D %}
+				float val = tex3D(projTexture, U, V, j + .5f);
+{% else %}
+                float val = tex2D<float>(projTextures[j], U, V);
+{% endif %}
+				Z[i] += r * r * val;
 
 				numU += nU.z;
 				numV += nV.z;
@@ -123,9 +110,8 @@ void cone_bp(
 		endZ = voxelsZ - startZ;
 
     // write Z to volume synchronously
-	for(int i=0; i < endZ; i++)
-	    volumeAdd(volume,
-	              voxelsX, voxelsY, voxelsZ,
-	              X, Y, startZ + i,
-	              Z[i] * outputScale);
+	for (int i = 0; i < endZ; ++i)
+	    volume[  X * voxelsY * voxelsZ
+               + Y * voxelsZ
+               + startZ + i] += Z[i] * outputScale;
 }

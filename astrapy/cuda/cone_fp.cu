@@ -41,15 +41,15 @@ __constant__ float detsVZ[{{ nr_projs_global }}];
 
 // x=0, y=1, z=2
 struct DIR_X {
-    __device__ float nSlices(unsigned int volX,
-                             unsigned int volY,
-                             unsigned int volZ) const { return volX; }
+    __device__ float nSlices(unsigned int voxX,
+                             unsigned int voxY,
+                             unsigned int voxZ) const { return voxX; }
     __device__ float nDim1(unsigned int volX,
-                           unsigned int volY,
-                           unsigned int volZ) const { return volY; }
-    __device__ float nDim2(unsigned int volX,
-                           unsigned int volY,
-                           unsigned int volZ) const { return volZ; }
+                           unsigned int voxY,
+                           unsigned int voxZ) const { return voxY; }
+    __device__ float nDim2(unsigned int voxX,
+                           unsigned int voxY,
+                           unsigned int voxZ) const { return voxZ; }
     __device__ float x(float x, float y, float z) const { return x; }
     __device__ float y(float x, float y, float z) const { return y; }
     __device__ float z(float x, float y, float z) const { return z; }
@@ -59,37 +59,37 @@ struct DIR_X {
 // y=0, x=1, z=2
 struct DIR_Y {
     __device__ float nSlices(unsigned int volX,
-                             unsigned int volY,
-                             unsigned int volZ) const { return volY; }
-    __device__ float nDim1(unsigned int volX,
-                           unsigned int volY,
-                           unsigned int volZ) const { return volX; }
-    __device__ float nDim2(unsigned int volX,
-                           unsigned int volY,
-                           unsigned int volZ) const { return volZ; }
+                             unsigned int voxY,
+                             unsigned int voxZ) const { return voxY; }
+    __device__ float nDim1(unsigned int voxX,
+                           unsigned int voxY,
+                           unsigned int voxZ) const { return voxX; }
+    __device__ float nDim2(unsigned int voxX,
+                           unsigned int voxY,
+                           unsigned int voxZ) const { return voxZ; }
     __device__ float x(float x, float y, float z) const { return y; }
     __device__ float y(float x, float y, float z) const { return x; }
     __device__ float z(float x, float y, float z) const { return z; }
     __device__ float tex(texture3D vol, float f0, float f1, float f2) const {
-        return tex3D(vol, f1, f0, f2); }
+        return tex3D(vol, f0, f2, f1); } //  1 0 2
 };
 
 // z=0, x=1, y=2
 struct DIR_Z {
     __device__ float nSlices(unsigned int volX,
-                             unsigned int volY,
-                             unsigned int volZ) const { return volZ; }
-    __device__ float nDim1(unsigned int volX,
-                           unsigned int volY,
-                           unsigned int volZ) const { return volX; }
-    __device__ float nDim2(unsigned int volX,
-                           unsigned int volY,
-                           unsigned int volZ) const { return volY; }
+                             unsigned int voxY,
+                             unsigned int voxZ) const { return voxZ; }
+    __device__ float nDim1(unsigned int voxX,
+                           unsigned int voxY,
+                           unsigned int voxZ) const { return voxX; }
+    __device__ float nDim2(unsigned int voxX,
+                           unsigned int voxY,
+                           unsigned int voxZ) const { return voxY; }
     __device__ float x(float x, float y, float z) const { return z; }
     __device__ float y(float x, float y, float z) const { return x; }
     __device__ float z(float x, float y, float z) const { return y; }
     __device__ float tex(texture3D vol, float f0, float f1, float f2) const {
-        return tex3D(vol, f1, f2, f0); }
+        return tex3D(vol, f2, f0, f1); }  // 1 2 0
 };
 
 
@@ -104,56 +104,52 @@ template<typename COORD>
 __global__ void cone_fp(
     texture3D volumeTexture,
     float ** projections,
-    unsigned int startSlice,
-    unsigned int startAngle,
-    unsigned int endAngle,
-    unsigned int volX,
-    unsigned int volY,
-    unsigned int volZ,
-    unsigned int detectorCols,
-    unsigned int detectorRows,
+    unsigned int offsetSlice,
+    unsigned int offsetProj,
+    unsigned int voxX,
+    unsigned int voxY,
+    unsigned int voxZ,
+    unsigned int rows,
+    unsigned int cols,
     float scale1,
     float scale2,
     float outputScale
 ) {
     COORD c;
 
-    int angle = startAngle + blockIdx.y * {{ nr_projs_block }} + threadIdx.y;
-    if (angle >= endAngle)
+    const int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= rows)
         return;
 
-    const float sX = srcsX[angle];
-    const float sY = srcsY[angle];
-    const float sZ = srcsZ[angle];
-    const float dUX = detsUX[angle];
-    const float dUY = detsUY[angle];
-    const float dUZ = detsUZ[angle];
-    const float dVX = detsVX[angle];
-    const float dVY = detsVY[angle];
-    const float dVZ = detsVZ[angle];
-    const float dSX = detsSX[angle] + .5f * dUX + .5f * dVX;
-    const float dSY = detsSY[angle] + .5f * dUY + .5f * dVY;
-    const float dSZ = detsSZ[angle] + .5f * dUZ + .5f * dVZ;
+    int col = blockIdx.y * {{ cols_per_thread }};
+    int endCol = col + {{ cols_per_thread }};
+    if (endCol > cols)
+        endCol = cols;
 
-    const int rowsInBlock = (detectorCols + {{ columns_per_block }} - 1)
-                            / {{ columns_per_block }};
-    const int column = (blockIdx.x % rowsInBlock) * {{ columns_per_block }}
-                         + threadIdx.x;
-    const int startRow = (blockIdx.x / rowsInBlock) * {{ rows_per_block }};
+    const int proj = offsetProj + blockIdx.z;
 
-    int endRow = startRow + {{ rows_per_block }};
-    if (endRow > detectorRows)
-        endRow = detectorRows;
+    int endSlice = offsetSlice + {{ slices_per_thread }};
+    if (endSlice > c.nSlices(voxX, voxY, voxZ))
+        endSlice = c.nSlices(voxX, voxY, voxZ);
 
-    int endSlice = startSlice + {{ block_slices }};
-    if (endSlice > c.nSlices(volX, volY, volZ))
-        endSlice = c.nSlices(volX, volY, volZ);
+    const float sX = srcsX[proj];
+    const float sY = srcsY[proj];
+    const float sZ = srcsZ[proj];
+    const float dUX = detsUX[proj];
+    const float dUY = detsUY[proj];
+    const float dUZ = detsUZ[proj];
+    const float dVX = detsVX[proj];
+    const float dVY = detsVY[proj];
+    const float dVZ = detsVZ[proj];
+    const float dSX = detsSX[proj] + .5f * dUX + .5f * dVX;
+    const float dSY = detsSY[proj] + .5f * dUY + .5f * dVY;
+    const float dSZ = detsSZ[proj] + .5f * dUZ + .5f * dVZ;
 
     // Trace the ray through a slice of the volume.
-    for (int row = startRow; row < endRow; ++row) {
-        const float detX = dSX + column * dUX + row * dVX;
-        const float detY = dSY + column * dUY + row * dVY;
-        const float detZ = dSZ + column * dUZ + row * dVZ;
+    for (; col < endCol; ++col) {
+        const float detX = dSX + col * dUX + row * dVX;
+        const float detY = dSY + col * dUY + row * dVY;
+        const float detZ = dSZ + col * dUZ + row * dVZ;
 
         /*        (x)   ( 1)       ( 0) *
          * ray:   (y) = (ay) * x + (by) *
@@ -165,29 +161,29 @@ __global__ void cone_fp(
         const float b1 = c.y(sX, sY, sZ) - a1 * c.x(sX, sY, sZ);
         const float b2 = c.z(sX, sY, sZ) - a2 * c.x(sX, sY, sZ);
 
-
         /* Could be (for cubes):
          *  sqrt(a1 * a1 + a2 * a2 + 1.0f) * outputScale; */
         const float distCorrection = sqrt(a1 * a1 * scale1 + a2 * a2 * scale2 + 1.f)
              * outputScale;
 
-        // coord is a coordinate in real space
-        float coord0 = startSlice + .5f;
-        float coord1 = a1 * (startSlice - .5f * c.nSlices(volX, volY, volZ) + .5f)
-            + b1 + .5f * c.nDim1(volX, volY, volZ);
-        float coord2 = a2 * (startSlice - .5f * c.nSlices(volX, volY, volZ) + .5f)
-            + b2 + .5f * c.nDim2(volX, volY, volZ);
+        const int nSlices = c.nSlices(voxX, voxY, voxZ);
+        const int nDim1 = c.nDim1(voxX, voxY, voxZ);
+        const int nDim2 = c.nDim2(voxX, voxY, voxZ);
+
+        float x = offsetSlice + .5f; // ray direction
+        float y = a1 * (offsetSlice - .5f * nSlices + .5f) + b1 + .5f * nDim1;
+        float z = a2 * (offsetSlice - .5f * nSlices + .5f) + b2 + .5f * nDim2;
 
         float val = 0.f;
-        for (int s = startSlice; s < endSlice; ++s) {
+        for (int s = offsetSlice; s < endSlice; ++s) {
             // add interpolated voxel value at current coordinate
-            val += c.tex(volumeTexture, coord0, coord1, coord2);
-            coord0 += 1.f;
-            coord1 += a1;
-            coord2 += a2;
+            val += c.tex(volumeTexture, z, y, x);
+            x += 1.f;
+            y += a1;
+            z += a2;
         }
         val *= distCorrection;
 
-        projections[angle][row * detectorCols + column] += val;
+        projections[proj][row * cols + col] += val;
     }
 }

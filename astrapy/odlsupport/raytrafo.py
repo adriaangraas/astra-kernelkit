@@ -206,6 +206,7 @@ class RayTrafoImpl:
                         volume_shape=self.vol_space.shape,
                         volume_extent_min=self.vol_space.min_pt,
                         volume_extent_max=self.vol_space.max_pt,
+                        chunk_size=300,
                         filter=None)
         else:
             raise NotImplementedError(
@@ -213,7 +214,7 @@ class RayTrafoImpl:
                 ' or incorrect geometry dimension. '.format(self.geometry))
 
         # Copy result to CPU memory, TODO: issue #2 again
-        out[:] = volume
+        out[:] = np.transpose(volume)
 
         # no more scaling here?
         # TODO: weighted spaces, how to handle them

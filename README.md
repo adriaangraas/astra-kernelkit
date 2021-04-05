@@ -36,8 +36,8 @@ dependent on CuPy to timely update when CUDA updates are rolled out.
 
 #### 0.1 release
  - [x] templated kernels
+ - [x] volume/sinogram axis order Python compatible 
  - [ ] pinned host memory
- - [ ] volume/sinogram axis order by user
  - [ ] parallel beam 2D / 3D
  - [ ] issue #1
  - [ ] checks: axis, contiguous, dtypes
@@ -47,19 +47,20 @@ dependent on CuPy to timely update when CUDA updates are rolled out.
 
 #### 1.0 release
  - [ ] tests   
-   - [ ] scaling, matching, contiguous
- - [ ] pip and Conda packaging
- - [ ] proper docs 
- - [ ] pitched/managed memory allocation 
+   - [x] scaling, matching
+   - [ ] contiguous
+ - [ ] packaging
+ - [ ] docs 
+ - [x] pitched/~~managed~~ memory allocation 
  - [ ] support supersampling operations
  - [ ] correctly handle anisotropic pixel/voxel sizes
  
 #### wishlist (not scheduled)
+ - [ ] volume/sinogram axis order by user
  - [ ] OpenCL backend support
  - [ ] kerneltuner 
  - [ ] mixed precision
  - [ ] issue #2
- - [ ] anisotropic voxel/pixel support
 
  
 ## Issues
