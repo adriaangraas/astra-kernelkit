@@ -29,16 +29,6 @@ class ConeProjection(Kernel):
     def __init__(self, *args, **kwargs):
         super().__init__('cone_fp.cu', *args, **kwargs)
 
-    def _compile(self, nr_projs_global: int):
-        names = ['cone_fp<DIR_X>', 'cone_fp<DIR_Y>', 'cone_fp<DIR_Z>']
-        module = self.load_module(
-            name_expressions=names,
-            slices_per_thread=self.SLICES_PER_THREAD,
-            cols_per_thread=self.COLS_PER_THREAD,
-            nr_projs_global=nr_projs_global)
-        funcs = [module.get_function(name) for name in names]
-        return module, funcs
-
     def __call__(
         self,
         volume_texture: txt.TextureObject,
@@ -46,6 +36,7 @@ class ConeProjection(Kernel):
         volume_extent_max: Sequence,
         geometries: list,
         projections: Sized,
+        volume_rotation: Sequence = (0., 0., 0.),
         rays_per_pixel: int = 1
     ):
         """Forward projection with conebeam geometry.
@@ -109,12 +100,18 @@ class ConeProjection(Kernel):
         assert len(proj_ptrs) == len(set(proj_ptrs)), (
             "All projection files need to reside in own memory.")
 
-        module, funcs = self._compile(
-            nr_projs_global=len(geometries))
-
         norm_geoms = copy.deepcopy(geometries)
         for g in norm_geoms:
-            _normalize_geom(g, volume_extent_min, volume_extent_max, vox_size)
+            _normalize_geom(g, volume_extent_min, volume_extent_max, vox_size,
+                            volume_rotation)
+
+        names = ['cone_fp<DIR_X>', 'cone_fp<DIR_Y>', 'cone_fp<DIR_Z>']
+        module = self._compile(
+            names=names,
+            template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
+                    'cols_per_thread': self.COLS_PER_THREAD,
+                    'nr_projs_global': len(norm_geoms)})
+        funcs = [module.get_function(n) for n in names]
         self._upload_geometries(norm_geoms, module)
 
         output_scale = self._output_scale(vox_size)
@@ -155,7 +152,7 @@ class ConeProjection(Kernel):
                 prev_ax = _ax
 
         # launch kernel for remaining projections
-        _launch(start, len(geometries), prev_ax)
+        _launch(start, len(norm_geoms), prev_ax)
 
     @staticmethod
     def _output_scale(voxel_size: np.ndarray) -> list:
@@ -207,23 +204,8 @@ class ConeBackprojection(Kernel):
     VOL_BLOCK = (16, 32, 6)
     LIMIT_PROJS_PER_BLOCK = 32
 
-    def __init__(self, *args, **kwargs):
-        super().__init__('cone_bp.cu', *args, **kwargs)
-
-    def _compile(self, nr_projs_block: int, nr_projs_global: int,
-                 use_texture3D: bool):
-        assert nr_projs_block > 0
-        assert nr_projs_global > 0
-        module = self.load_module(
-            name_expressions=('cone_bp',),
-            vol_block_x=self.VOL_BLOCK[0],
-            vol_block_y=self.VOL_BLOCK[1],
-            vol_block_z=self.VOL_BLOCK[2],
-            nr_projs_block=nr_projs_block,
-            nr_projs_global=nr_projs_global,
-            texture3D=use_texture3D)
-        funcs = (module.get_function("cone_bp"),)
-        return module, funcs
+    def __init__(self):
+        super().__init__('cone_bp.cu')
 
     def __call__(self,
                  projections_textures: Any,
@@ -282,10 +264,17 @@ class ConeBackprojection(Kernel):
         vox_volume = voxel_volume(
             volume.shape, volume_extent_min, volume_extent_max)
 
-        module, funcs = self._compile(
-            nr_projs_global=len(geometries),
-            nr_projs_block=self.LIMIT_PROJS_PER_BLOCK,
-            use_texture3D=compile_use_texture3D)
+        module = self._compile(
+            names=('cone_bp',),
+            template_kwargs={'vol_block_x': self.VOL_BLOCK[0],
+                    'vol_block_y': self.VOL_BLOCK[1],
+                    'vol_block_z': self.VOL_BLOCK[2],
+                    'nr_projs_block': self.LIMIT_PROJS_PER_BLOCK,
+                    'nr_projs_global': len(geometries),
+                    'texture3D': compile_use_texture3D}
+        )
+        cone_bp = module.get_function("cone_bp")
+
         params = []  # precomputed kernel parameters
         for g in copy.deepcopy(geometries):
             _normalize_geom(
@@ -295,17 +284,17 @@ class ConeBackprojection(Kernel):
             # TODO(Adriaan): better to have SoA instead AoS?
             params.extend([*nU.to_list(), *nV.to_list(), *d.to_list()])
         _copy_to_symbol(module, 'params', np.array(params).astype(np.float))
-        blocks = np.ceil(np.asarray(volume.shape)
-                         / self.VOL_BLOCK).astype(np.int)
+        blocks = np.ceil(
+            np.asarray(volume.shape) / self.VOL_BLOCK).astype(np.int)
         for start in range(0, len(geometries), self.LIMIT_PROJS_PER_BLOCK):
-            funcs[0]((blocks[0] * blocks[1], blocks[2]),
-                     (self.VOL_BLOCK[0], self.VOL_BLOCK[1]),
-                     (projections,
-                      volume,
-                      start,
-                      len(geometries),
-                      *volume.shape,
-                      cp.float32(vox_volume)))
+            cone_bp((blocks[0] * blocks[1], blocks[2]),
+                    (self.VOL_BLOCK[0], self.VOL_BLOCK[1]),
+                    (projections,
+                     volume,
+                     start,
+                     len(geometries),
+                     *volume.shape,
+                     cp.float32(vox_volume)))
 
     @staticmethod
     def _geom2params(geom: AstraStatic3DGeometry,

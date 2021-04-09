@@ -1,4 +1,6 @@
+import warnings
 from abc import ABC, abstractmethod
+from importlib import resources
 from typing import Sequence
 
 import cupy as cp
@@ -85,7 +87,7 @@ def _copy_to_symbol(module: RawModule, name: str, array, dtype=np.float32):
     import ctypes
     p = module.get_global(name)
     a_cpu = np.ascontiguousarray(np.squeeze(array), dtype=dtype)
-    p.copy_from(a_cpu.ctypes.data_as(ctypes.c_void_p), a_cpu.nbytes)
+    p.copy_from_async(a_cpu.ctypes.data_as(ctypes.c_void_p), a_cpu.nbytes)
 
 
 class _cuda_float4:
@@ -106,7 +108,7 @@ class Kernel(ABC):
     SUPPORTED_DTYPES = [cp.float32]
 
     @abstractmethod
-    def __init__(self, resource: str):
+    def __init__(self, resource: str, *args):
         """
         Note: I don't want Kernel to do anything with global memory
         allocation. Managing global memory (with on/offloading, limits, CuPy
@@ -117,8 +119,9 @@ class Kernel(ABC):
         """
         # we cannot load the source immediately because some template
         # arguments may only be known at runtime.
-        from importlib import resources
         self._cuda_source = resources.read_text('astrapy.cuda', resource)
+        self.__compilation_cache = None
+        self.__compilation_times = 0
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> type(None):
@@ -130,9 +133,9 @@ class Kernel(ABC):
     def cuda_source(self) -> str:
         return self._cuda_source
 
-    def load_module(self,
-                    name_expressions: Sequence = None,
-                    **template_kwargs) -> RawModule:
+    def __compile(self,
+                  name_expressions,
+                  template_kwargs) -> RawModule:
         """Renders Jinja2 template and imports kernel in CuPy"""
         code = jinja2.Template(
             self.cuda_source,
@@ -142,3 +145,20 @@ class Kernel(ABC):
             # --std is required for name expressions
             options=('--std=c++11',),  # TODO: error on c++17?
             name_expressions=name_expressions)
+
+    def _compile(self,
+                 names: Sequence[str],
+                 template_kwargs: dict) -> RawModule:
+        if (self.__compilation_cache is None
+            or self.__compilation_cache[1] != names
+            or self.__compilation_cache[2] != template_kwargs):
+            self.__compilation_cache = (
+                self.__compile(names, template_kwargs), names, template_kwargs)
+            self.__compilation_times += 1
+            if self.__compilation_times > 5:
+                # technically the kernel is only compiled when a function
+                # is retrieved from it
+                warnings.warn(f"Module `{self.__class__}` has been recompiled "
+                              f"5 times, consider passing limits.")
+
+        return self.__compilation_cache[0]

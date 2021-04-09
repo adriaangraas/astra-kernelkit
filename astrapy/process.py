@@ -1,3 +1,5 @@
+import warnings
+
 import cupy as cp
 import numpy as np
 from tqdm import tqdm
@@ -7,28 +9,29 @@ from astrapy.geom3d import AstraStatic3DGeometry
 
 def filter(projections,
            verbose=False):
-    ramlak = cp.linspace(-1, 1, num=projections[0].shape[1] // 2 + 1)
-    ramlak = cp.abs(ramlak)
+    xp = cp.get_array_module(projections[0])
+    ramlak = xp.linspace(-1, 1, num=projections[0].shape[1] // 2 + 1)
+    ramlak = xp.abs(ramlak)
     for p in tqdm(projections, disable=not verbose):
-        f = cp.fft.fftshift(cp.fft.rfft(p))
+        assert cp.get_array_module(p) == xp, (
+            "Arrays need to be all cupy or all numpy.")
+        f = xp.fft.fftshift(xp.fft.rfft(p))
         f *= ramlak  # complex mult with ramp filter
-        p[...] = cp.fft.irfft(cp.fft.ifftshift(f), n=p.shape[1])
+        p[...] = xp.fft.irfft(xp.fft.ifftshift(f), n=p.shape[1])
 
 
 def preweight(projections,
               geoms: list[AstraStatic3DGeometry],
               verbose: bool = False):
     """Pixelwise rescaling to compensate for ray length in conebeam images"""
-
     xp = cp.get_array_module(projections[0])
-
     # prepare computation of all pixel vectors
     rows, cols = xp.mgrid[0:geoms[0].detector.rows, 0:geoms[0].detector.cols]
     rows_view = xp.repeat(rows[:, :, xp.newaxis], 3, 2)
     cols_view = xp.repeat(cols[:, :, xp.newaxis], 3, 2)
 
     for p, g in tqdm(zip(projections, geoms), disable=not verbose):
-        assert xp.get_array_module(p) == xp, (
+        assert cp.get_array_module(p) == xp, (
             "Arrays need to be all cupy or all numpy.")
         assert g.detector.rows == geoms[0].detector.rows
         assert g.detector.cols == geoms[0].detector.cols

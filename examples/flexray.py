@@ -1,12 +1,13 @@
-from typing import Any, Sequence
+from typing import Any
 
 import cupy as cp
 import numpy as np
 import reflex
 from reflex import centralize
 
-from astrapy import bp
+from astrapy import bp, suggest_volume_extent
 from astrapy.geom3d import AstraStatic3DGeometry, Flat2DDetector
+
 
 def geom(settings, angles, corrections: Any = True, verbose=None):
     motor_geom = reflex.motor_geometry(
@@ -40,35 +41,6 @@ def geom(settings, angles, corrections: Any = True, verbose=None):
     return geoms
 
 
-def compute_volume_dimensions(settings, nr_voxels_x=None):
-    det = reflex.SquarePixelDetector(
-        settings.det_binned_rows(),
-        settings.det_binned_cols(),
-        settings.binned_pixel_size())
-
-    # voxel width according to physical pixel size
-    voxel_width, voxel_height = settings.suggested_voxel_size()
-    # make voxel size larger if a small number of voxels is needed, and
-    # vice versa
-    if nr_voxels_x is None:
-        nr_voxels_x = det.cols
-        nr_voxels_z = det.rows
-        scaling = 1
-    else:
-        # the amount of z-voxels should be proportional the detector dimensions
-        estimated_nr_voxels_z = nr_voxels_x / det.cols * det.rows
-        nr_voxels_z = int(np.ceil(estimated_nr_voxels_z))
-        # since voxels_x is given, we need to scale the suggested voxel size
-        scaling = nr_voxels_x / det.cols
-
-    voxel_width /= scaling
-    voxel_height /= scaling
-    # compute total volume size based on the rounded voxel size
-    width_from_center = voxel_width * nr_voxels_x / 2
-    height_from_center = voxel_height * nr_voxels_z / 2
-    return nr_voxels_x, nr_voxels_z, width_from_center, height_from_center
-
-
 def reconstruct(
     settings_path,
     projs_path,
@@ -77,6 +49,8 @@ def reconstruct(
     voxels_x,
     proj_ids,
     nr_angles_per_rot=None,
+    rot=2 * np.pi,
+    reco_interval=None,
     plot_pyqtgraph=False,
     corrections: Any = True,
     mode_slice: Any = False,
@@ -85,7 +59,9 @@ def reconstruct(
     settings = reflex.Settings.from_path(settings_path)
     if nr_angles_per_rot is None:
         nr_angles_per_rot = len(proj_ids)
-    angles = proj_ids * (2 * np.pi) / nr_angles_per_rot
+    angles = proj_ids * rot / nr_angles_per_rot
+    if reco_interval is None:
+        reco_interval = int(np.ceil(2 * np.pi * nr_angles_per_rot / rot))
 
     darks = reflex.darks(darks_path)
     whites = reflex.flats(flats_path)
@@ -111,14 +87,14 @@ def reconstruct(
 
     geometry = geom(settings, angles, corrections)
 
-    vxls_x, vxls_z, w, h = compute_volume_dimensions(settings, voxels_x)
+    vol_min, vol_max = suggest_volume_extent(geometry[0])
     if mode_slice is False:
         projections = reflex.projs(projs_path, proj_ids)
         vol = bp(projections,
                  geometry,
-                 (vxls_x, vxls_x, vxls_z),
-                 np.array((-w, -w, -h)) * vol_scaling_factor,
-                 np.array((w, w, h)) * vol_scaling_factor,
+                 (voxels_x, None, None),
+                 np.array(vol_min) * vol_scaling_factor,
+                 np.array(vol_max) * vol_scaling_factor,
                  chunk_size=50,
                  fpreproc=_preproc_projs)
 
@@ -127,13 +103,12 @@ def reconstruct(
             pq.image(vol)
             import matplotlib.pyplot as plt
             plt.figure()
-            plt.imshow(vol[..., vxls_z // 2])
+            plt.imshow(vol[..., vol.shape[2] // 2])
             plt.show()
     else:
         def _fload(ids):
-            return reflex.projs(projs_path, ids)
+            return reflex.projs(projs_path, ids, verbose=False)
 
-        from astrapy.algo import ProjectionBufferBp
         from astrapy.kernels import ConeBackprojection
         bufferbp = ProjectionBufferBp(
             ConeBackprojection(),
@@ -144,69 +119,50 @@ def reconstruct(
             fpreproc=_preproc_projs)
 
         import matplotlib.pyplot as plt
-        fig = plt.figure()
-        ax = fig.gca()
+        # fig = plt.figure()
+        # ax = fig.gca()
         # axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=-1e4, vmax=1e4)
         # axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=-8., vmax=20.)
-        axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=0, vmax=.5)
+        # axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=0, vmax=.005)
         # axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=-100., vmax=2000.)
 
-        for n in range(0, len(proj_ids) - 150):
+        state = iter(range(0, len(proj_ids) - reco_interval))
+        w, h = vol_max[0], vol_max[2]
+        def runf():
+            n = next(state)
             if mode_slice == 'temporal':
-                r = range(n, n + 150)
+                r = range(n, n + reco_interval)
             else:
                 r = range(0, len(proj_ids))
-
-            slice = bufferbp.slice(
+            return bufferbp.slice(
                 r,
-                # slice_shape=(vxls_x, vxls_x),
-                slice_shape=(vxls_x, vxls_x),
-                slice_extent_min=(-w, -w),
-                slice_extent_max=(w, w),
-                slice_rotation=[n / 100 * np.pi] * 3,
+                slice_shape=(voxels_x, voxels_x),
+                slice_extent_min=np.array((-w, -w)) * 1.5,
+                slice_extent_max=np.array((w, w)) * 1.5,
+                slice_rotation=[n / 50 * np.pi] * 3,
                 slice_position=np.array(
-                    (np.sin(n / 100), np.cos(n / 100), np.sin(n / 100))) * w / 2
-            )
+                    (np.sin(n / 50), np.cos(n / 50), np.sin(n / 50)))
+                               * w / 2)
 
-            # slice = bufferbp.randslice(
-            #     numbers_range=range(len(proj_range)),
-            #     numbers_length=75,
-            #     slice_shape=(vxls_x, vxls_x) ,
-            #     slice_extent_min=(-w, -w),
-            #     slice_extent_max=(w, w),
-            #     slice_rotation=(2 * np.pi, 2 * np.pi, 2 * np.pi),
-            #     slice_position_min=(-w/4, -w/4, -h/4),
-            #     slice_position_max=(w/4, w/4, h/4),
-            # )
-            axim.set_array(slice)
-            plt.pause(.0001)
+        # def runaf():
+        #     return bufferbp.randslice(
+        #         numbers_sampling_set=range(next(state) + reco_interval), #range(len(proj_ids)),
+        #         numbers_sample_size=reco_interval,
+        #         slice_shape=(voxels_x, voxels_x),
+        #         slice_extent_min=(-w, -w),
+        #         slice_extent_max=(w, w),
+        #         slice_rotation=(2 * np.pi, 2 * np.pi, 2 * np.pi),
+        #         slice_position_min=(-w / 4, -w / 4, -h / 4),
+        #         slice_position_max=(w / 4, w / 4, h / 4))
 
-        plt.show()
-        #     plt.draw()
-        #     plt.pause(0.01)
+        # axim.set_array(slice)
+        # plt.pause(.001)
 
 
 if __name__ == '__main__':
     np.set_printoptions(suppress=True)
 
     prefix = "/home/adriaan/data"
-    # # prefix = "/bigstore/felix/CT/TabletDissolve2/12ms4x4bin/handsoap_layeredSand"
-    # path = f"{prefix}/handsoap_layeredSand/scan_4"
-    # settings_path = f"{prefix}/handsoap_layeredSand/pre_scan"
-    # reconstruct(
-    #     projs_path=path,
-    #     settings_path=settings_path,
-    #     darks_path=settings_path,
-    #     flats_path=settings_path,
-    #     voxels_x=None,
-    #     # proj_range=range(0, 1201),
-    #     # angles=np.linspace(0, 2 * np.pi, 150, endpoint=False),
-    #     proj_ids=np.arange(1000),
-    #     nr_angles_per_rot=150,
-    #     plot_pyqtgraph=True,
-    #     corrections=True,
-    #     mode_slice='temporal')
-
     path = f"{prefix}/pink_plant"
     corrections = reflex.motor.Corrections()
     corrections.tra_det_correction = 24.
@@ -216,7 +172,7 @@ if __name__ == '__main__':
         projs_path=path,
         darks_path=path,
         flats_path=path,
-        voxels_x=200,
+        voxels_x=400,
         # proj_range=range(0, 1201, 8),
         # angles=np.arange(0, 2 * np.pi, 2 * np.pi / 1201 * 8),
         proj_ids=np.arange(1201),

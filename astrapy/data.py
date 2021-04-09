@@ -30,48 +30,29 @@ def voxel_volume(volume_shape: Sequence,
     return float(np.prod(vox_size))
 
 
-def pitched_shape(array):
-    assert array.ndim == 2
-    # TODO: check if array is C-contiguous
-    bytes = (int(np.ceil(array.shape[1] * array.dtype.itemsize / 32)) * 32)
+def pitched_shape(array) -> tuple:
+    assert array.flags.c_contiguous
+    bytes = (int(np.ceil(array.shape[-1] * array.dtype.itemsize / 32)) * 32)
     items = bytes / array.dtype.itemsize
     assert items.is_integer()
-    return array.shape[0], int(items)
+    return *array.shape[:-1], int(items)
 
 
 def ispitched(array) -> bool:
-    return pitched_shape(array) == array.shape
+    arr = array.base if array.base is not None else array
+    return pitched_shape(arr) == arr.shape
 
 
-def aspitched(array, pitched_view=True):
+def aspitched(array):
+    """Pads array to pitched shape and returns view in original shape."""
     assert array.ndim == 2
     if ispitched(array):
         return array
 
     xp = cp.get_array_module(array)
-    pitched_array = xp.zeros(pitched_shape(array), dtype=xp.float32)
+    pitched_array = xp.zeros(pitched_shape(array), dtype=array.dtype)
     pitched_array[:, :array.shape[1]] = array[...]
-
-    if pitched_view:
-        vw = pitched_array[:, :array.shape[1]]
-        assert vw.flags.owndata is False
-        assert vw.base is pitched_array
-        return vw
-    else:
-        return array
-
-
-def empty_gpu(shape, dtype=None, order=None):
-    """An implementation-unaware array creation helper.
-    Helps the user to write Cupy-free code.
-    TODO: evaluate if it is realistic to expect that a Cupy-unaware user
-    """
-    return cp.empty(shape, dtype, order)
-
-
-def zeros_gpu(shape, dtype=None, order=None):
-    """An implementation-unaware array creation helper.
-    Helps the user to write Cupy-free code.
-    TODO: evaluate if it is realistic to expect that a Cupy-unaware user
-    """
-    return cp.zeros(shape, dtype, order)
+    vw = pitched_array[:, :array.shape[1]]
+    assert vw.flags.owndata is False
+    assert vw.base is pitched_array
+    return vw

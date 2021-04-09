@@ -1,15 +1,14 @@
-import copy
 import itertools
 
 import cupy as cp
 import numpy as np
 import pytest
 
-from astrapy.process import preweight
 from astrapy.geom3d import Flat2DDetector
 from astrapy.kernel import _copy_to_texture
-from astrapy.kernels import AstraStatic3DGeometry, ConeBackprojection, \
-    ConeProjection
+from astrapy.kernels import (AstraStatic3DGeometry, ConeBackprojection,
+                             ConeProjection)
+from astrapy.process import preweight
 
 
 @pytest.fixture
@@ -93,7 +92,6 @@ def test_matching_singleproj(fpkern, bpkern, vol_fill, vol_ext, vol_sz):
     else:
         f = cp.random.random(vol_shp, dtype=cp.float32)
 
-    # f[25:75, 25:75, 25:75] = 1.
     g = cp.zeros((rows, cols), dtype=cp.float32)
     fpkern(
         volume_texture=_copy_to_texture(f),
@@ -114,6 +112,4 @@ def test_matching_singleproj(fpkern, bpkern, vol_fill, vol_ext, vol_sz):
     # <Ax, Ax> == <A^* A x, x>
     AxAx = cp.inner(g.flatten(), g.flatten()).get()
     xAtAx = cp.inner(f2.flatten(), f.flatten()).get()
-    print(AxAx)
-    print(xAtAx)
     assert AxAx == pytest.approx(xAtAx, rel=.05)
