@@ -1,5 +1,3 @@
-import warnings
-
 import cupy as cp
 import numpy as np
 from tqdm import tqdm
@@ -7,8 +5,7 @@ from tqdm import tqdm
 from astrapy.geom import Geometry
 
 
-def filter(projections,
-           verbose=False):
+def filter(projections, verbose=False):
     xp = cp.get_array_module(projections[0])
     ramlak = xp.linspace(-1, 1, num=projections[0].shape[1] // 2 + 1)
     ramlak = xp.abs(ramlak)
