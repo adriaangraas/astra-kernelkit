@@ -4,7 +4,7 @@ import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy.geom3d import Geometry
+from astrapy.geom import Geometry
 
 
 def filter(projections,

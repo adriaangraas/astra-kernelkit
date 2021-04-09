@@ -4,7 +4,7 @@ import cupy as cp
 import numpy as np
 import pytest
 
-from astrapy.geom3d import Detector
+from astrapy.geom import Detector
 from astrapy.kernel import _copy_to_texture
 from astrapy.kernels import (Geometry, ConeBackprojection,
                              ConeProjection)

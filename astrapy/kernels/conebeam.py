@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 from astrapy import process
 from astrapy.data import *
-from astrapy.geom3d import *
+from astrapy.geom import *
 from astrapy.kernel import *
 from astrapy.kernel import (_copy_to_symbol, _copy_to_texture, _cuda_float4,
                             _texture_shape)

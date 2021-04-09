@@ -6,7 +6,7 @@ import reflex
 from reflex import centralize
 
 from astrapy import bp, suggest_volume_extent
-from astrapy.geom3d import Geometry, Detector
+from astrapy.geom import Geometry, Detector
 
 
 def geom(settings, angles, corrections: Any = True, verbose=None):

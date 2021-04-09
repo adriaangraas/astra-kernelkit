@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from astrapy import bp, fp
-from astrapy.geom3d import Detector, Geometry, rotate
+from astrapy.geom import Detector, Geometry, rotate
 
 
 def simple_geom(rows, cols, tube_dist, det_dist, px_w=.01, px_h=.01):

@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 
 from astrapy import kernels
-from astrapy.geom3d import shift
+from astrapy.geom import shift
 
 
 def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):
