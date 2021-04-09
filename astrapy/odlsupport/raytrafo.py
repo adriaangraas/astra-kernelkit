@@ -33,23 +33,10 @@ def _cone_3d_to_geom3d(geometry):
     def _compat_swap_geoms(geometries):
         for geom in geometries:
             _swp = lambda x: np.array([x[2], x[1], x[0]])
-
-            # if swap_uv:
-            #     tmp = geom.v[:]
-            #     geom.v[:] = geom.u[:]
-            #     geom.u[:] = tmp
-            #     tmp = geom.detector.pixel_width
-            #     geom.detector.pixel_width = geom.detector.pixel_height
-            #     geom.detector.pixel_height = tmp
-            #     tmp = geom.detector.rows
-            #     geom.detector.rows = geom.detector.cols
-            #     geom.detector.cols = tmp
-
             geom.u[:] = _swp(geom.u[:])
             geom.v[:] = _swp(geom.v[:])
             geom.tube_position[:] = _swp(geom.tube_position[:])
             geom.detector_position[:] = _swp(geom.detector_position[:])
-
 
     det = astrapy.geom3d.Flat2DDetector(
         rows=geometry.detector.shape[0],
@@ -62,14 +49,13 @@ def _cone_3d_to_geom3d(geometry):
         det_axes = np.moveaxis(geometry.det_axes(angle), -2, 0)
         geoms.append(astrapy.geom3d.AstraStatic3DGeometry(
             tube_pos=geometry.src_position(angle)[0],
-            det_pos=
-            geometry.det_point_position(angle, geometry.det_params.mid_pt)[0],
-            u_unit=det_axes[1][0],
-            v_unit=det_axes[0][0],
+            det_pos=geometry.det_point_position(
+                angle, geometry.det_params.mid_pt)[0],
+            u_unit=det_axes[0][0],
+            v_unit=det_axes[1][0],
             detector=copy.deepcopy(det)))
 
     _compat_swap_geoms(geoms)
-
     return geoms
 
 
@@ -101,6 +87,7 @@ class RayTrafoImpl:
         self.geometry = geometry
         self.vol_space = vol_space
         self.proj_space = proj_space
+        self.filter = False
 
     def call_forward(self, vol_data, out=None):
         """Run an ASTRA forward projection on the given data
@@ -148,7 +135,7 @@ class RayTrafoImpl:
                 chunk_size=1200)
 
             # TODO: issue #2
-            out[:] = np.reshape(sino, self.proj_space.shape)
+            out[:] = sino
         else:
             raise NotImplementedError(
                 'Unknown AstraPy geometry type {!r}, incorrect detector,'
@@ -182,15 +169,6 @@ class RayTrafoImpl:
         else:
             out = self.vol_space.element()
 
-        # volume = astrapy.Volume(
-        #     data=astrapy.zeros_gpu(
-        #         self.vol_space.shape,
-        #         dtype=kernel.Kernel.FLOAT_DTYPE
-        #     ),
-        #     extent_min=self.vol_space.min_pt,
-        #     extent_max=self.vol_space.max_pt)
-        # sino = SinogramAdapter(self.geometry, proj_data)
-
         if (isinstance(self.geometry, FanBeamGeometry)
             and isinstance(self.geometry.detector, Flat1dDetector)
             and self.geometry.ndim == 2):
@@ -202,19 +180,19 @@ class RayTrafoImpl:
               and self.geometry.ndim == 3):
             geom = _cone_3d_to_geom3d(self.geometry)
             volume = astrapy.bp(proj_data.data,
-                        geom,
-                        volume_shape=self.vol_space.shape,
-                        volume_extent_min=self.vol_space.min_pt,
-                        volume_extent_max=self.vol_space.max_pt,
-                        chunk_size=300,
-                        filter=None)
+                                geom,
+                                volume_shape=self.vol_space.shape,
+                                volume_extent_min=self.vol_space.min_pt,
+                                volume_extent_max=self.vol_space.max_pt,
+                                chunk_size=300,
+                                filter=None if not self.filter else 'ram-lak')
         else:
             raise NotImplementedError(
                 'Unknown AstraPy geometry type {!r}, incorrect detector,'
                 ' or incorrect geometry dimension. '.format(self.geometry))
 
         # Copy result to CPU memory, TODO: issue #2 again
-        out[:] = np.transpose(volume)
+        out[:] = volume
 
         # no more scaling here?
         # TODO: weighted spaces, how to handle them

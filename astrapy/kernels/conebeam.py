@@ -119,7 +119,7 @@ class ConeProjection(Kernel):
         blocks_v = int(np.ceil(rows / self.ROWS_PER_BLOCK))
 
         def _launch(start: int, stop: int, axis: int):
-            print(f"Launching {start}-{stop}, axis {axis}")
+            # print(f"Launching {start}-{stop}, axis {axis}")
             # slice volume in the axis of the ray direction
             for i in range(0, volume_shape[axis], self.SLICES_PER_THREAD):
                 funcs[axis](

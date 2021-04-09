@@ -1,15 +1,12 @@
 import copy
 import warnings
-from typing import Any, Callable, Sequence, Sized
+from typing import Any, Sequence, Sized
 
-import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy import kernels, process
-from astrapy.data import aspitched, voxel_size
+from astrapy import kernels
 from astrapy.geom3d import shift
-from astrapy.kernel import Kernel, _copy_to_texture
 
 
 def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):
@@ -123,7 +120,7 @@ def fp(
         # TODO: allocate in memory-friendly back-end (e.g. file-based)
         projections = []
         for g in geometry:
-            d = np.zeros((g.detector.cols, g.detector.rows))
+            d = np.zeros((g.detector.rows, g.detector.cols))
             projections.append(d)
 
     vol_shp, vol_ext_min, vol_ext_max = _parse_vol_params(
@@ -151,7 +148,7 @@ def bp(
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     chunk_size: int = 1000,
-    filter: str = 'ram_lak',
+    filter: Any = 'ram_lak',
     **kwargs):
     """
     Executes `kernel`
@@ -198,4 +195,3 @@ def bp(
         pass
 
     return volume_gpu.get()
-

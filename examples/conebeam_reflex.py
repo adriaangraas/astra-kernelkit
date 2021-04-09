@@ -53,7 +53,6 @@ def reconstruct(
     reco_interval=None,
     plot_pyqtgraph=False,
     corrections: Any = True,
-    mode_slice: Any = False,
     vol_scaling_factor: float = 1.,
 ):
     settings = reflex.Settings.from_path(settings_path)
@@ -88,75 +87,22 @@ def reconstruct(
     geometry = geom(settings, angles, corrections)
 
     vol_min, vol_max = suggest_volume_extent(geometry[0])
-    if mode_slice is False:
-        projections = reflex.projs(projs_path, proj_ids)
-        vol = bp(projections,
-                 geometry,
-                 (voxels_x, None, None),
-                 np.array(vol_min) * vol_scaling_factor,
-                 np.array(vol_max) * vol_scaling_factor,
-                 chunk_size=50,
-                 fpreproc=_preproc_projs)
+    projections = reflex.projs(projs_path, proj_ids)
+    vol = bp(projections,
+             geometry,
+             (voxels_x, None, None),
+             np.array(vol_min) * vol_scaling_factor,
+             np.array(vol_max) * vol_scaling_factor,
+             chunk_size=50,
+             fpreproc=_preproc_projs)
 
-        if plot_pyqtgraph:
-            import pyqtgraph as pq
-            pq.image(vol)
-            import matplotlib.pyplot as plt
-            plt.figure()
-            plt.imshow(vol[..., vol.shape[2] // 2])
-            plt.show()
-    else:
-        def _fload(ids):
-            return reflex.projs(projs_path, ids, verbose=False)
-
-        from astrapy.kernels import ConeBackprojection
-        bufferbp = ProjectionBufferBp(
-            ConeBackprojection(),
-            proj_ids,
-            geometry,
-            _fload,
-            # filter=None,
-            fpreproc=_preproc_projs)
-
+    if plot_pyqtgraph:
+        import pyqtgraph as pq
+        pq.image(vol)
         import matplotlib.pyplot as plt
-        # fig = plt.figure()
-        # ax = fig.gca()
-        # axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=-1e4, vmax=1e4)
-        # axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=-8., vmax=20.)
-        # axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=0, vmax=.005)
-        # axim = ax.imshow(np.ones((vxls_x, vxls_x)), vmin=-100., vmax=2000.)
-
-        state = iter(range(0, len(proj_ids) - reco_interval))
-        w, h = vol_max[0], vol_max[2]
-        def runf():
-            n = next(state)
-            if mode_slice == 'temporal':
-                r = range(n, n + reco_interval)
-            else:
-                r = range(0, len(proj_ids))
-            return bufferbp.slice(
-                r,
-                slice_shape=(voxels_x, voxels_x),
-                slice_extent_min=np.array((-w, -w)) * 1.5,
-                slice_extent_max=np.array((w, w)) * 1.5,
-                slice_rotation=[n / 50 * np.pi] * 3,
-                slice_position=np.array(
-                    (np.sin(n / 50), np.cos(n / 50), np.sin(n / 50)))
-                               * w / 2)
-
-        # def runaf():
-        #     return bufferbp.randslice(
-        #         numbers_sampling_set=range(next(state) + reco_interval), #range(len(proj_ids)),
-        #         numbers_sample_size=reco_interval,
-        #         slice_shape=(voxels_x, voxels_x),
-        #         slice_extent_min=(-w, -w),
-        #         slice_extent_max=(w, w),
-        #         slice_rotation=(2 * np.pi, 2 * np.pi, 2 * np.pi),
-        #         slice_position_min=(-w / 4, -w / 4, -h / 4),
-        #         slice_position_max=(w / 4, w / 4, h / 4))
-
-        # axim.set_array(slice)
-        # plt.pause(.001)
+        plt.figure()
+        plt.imshow(vol[..., vol.shape[2] // 2])
+        plt.show()
 
 
 if __name__ == '__main__':
@@ -173,10 +119,7 @@ if __name__ == '__main__':
         darks_path=path,
         flats_path=path,
         voxels_x=400,
-        # proj_range=range(0, 1201, 8),
-        # angles=np.arange(0, 2 * np.pi, 2 * np.pi / 1201 * 8),
         proj_ids=np.arange(1201),
         plot_pyqtgraph=True,
         corrections=True,
-        mode_slice=False,
         vol_scaling_factor=.7)
