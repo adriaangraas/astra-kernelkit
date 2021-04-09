@@ -1,10 +1,11 @@
+import copy
 from typing import Sequence
 
 import numpy as np
 import transforms3d
 
 
-class Flat2DDetector:
+class Detector:
     """A baseclass for detectors without any special properties.
     Note that you can initialize detectors with or without binned pixels,
     rows and cols, there is no distinction on the software level.
@@ -38,7 +39,7 @@ class Static3DGeometry:
                  det_roll: float,
                  det_pitch: float,
                  det_yaw: float,
-                 detector: Flat2DDetector,
+                 detector: Detector,
                  det_piercing: Sequence = None):
         self.tube_position = tube_pos
         self.detector_position = det_pos
@@ -101,14 +102,14 @@ class Static3DGeometry:
                f"Detector {self.detector_position}"
 
 
-class AstraStatic3DGeometry(Static3DGeometry):
+class Geometry(Static3DGeometry):
     def __init__(self,
                  tube_pos: Sequence,
                  det_pos: Sequence,
                  u_unit: Sequence,
                  v_unit: Sequence,
                  detector,
-                 det_piercing = None):
+                 det_piercing=None):
         # TODO(Adriaan): unify __init__ or the classes
         self.tube_position = np.array(tube_pos)
         self.detector_position = np.array(det_pos)
@@ -171,13 +172,24 @@ def scale(geom: Static3DGeometry, scaling: np.ndarray):
     geom.detector_position[:] = geom.detector_position[:] / scaling
 
 
-def rotate(geom: Static3DGeometry,
-           roll: float = 0., pitch: float = 0., yaw: float = 0.):
+def rotate_inplace(geom: Static3DGeometry,
+                   roll: float = 0., pitch: float = 0., yaw: float = 0.):
     RT = Static3DGeometry.angles2mat(roll, pitch, yaw).T
     geom.tube_position = RT @ geom.tube_position
     geom.detector_position = RT @ geom.detector_position
     geom.u = RT @ geom.u
     geom.v = RT @ geom.v
+
+
+def rotate(geom: Static3DGeometry,
+           roll: float = 0., pitch: float = 0., yaw: float = 0.):
+    geom = copy.deepcopy(geom)
+    RT = Static3DGeometry.angles2mat(roll, pitch, yaw).T
+    geom.tube_position = RT @ geom.tube_position
+    geom.detector_position = RT @ geom.detector_position
+    geom.u = RT @ geom.u
+    geom.v = RT @ geom.v
+    return geom
 
 
 def plot(geoms: dict):

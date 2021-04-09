@@ -38,7 +38,7 @@ def _cone_3d_to_geom3d(geometry):
             geom.tube_position[:] = _swp(geom.tube_position[:])
             geom.detector_position[:] = _swp(geom.detector_position[:])
 
-    det = astrapy.geom3d.Flat2DDetector(
+    det = astrapy.geom3d.Detector(
         rows=geometry.detector.shape[0],
         cols=geometry.detector.shape[1],
         pixel_width=geometry.det_partition.cell_sides[1],
@@ -47,7 +47,7 @@ def _cone_3d_to_geom3d(geometry):
     geoms = list()
     for angle in zip(geometry.angles):
         det_axes = np.moveaxis(geometry.det_axes(angle), -2, 0)
-        geoms.append(astrapy.geom3d.AstraStatic3DGeometry(
+        geoms.append(astrapy.geom3d.Geometry(
             tube_pos=geometry.src_position(angle)[0],
             det_pos=geometry.det_point_position(
                 angle, geometry.det_params.mid_pt)[0],

@@ -6,7 +6,7 @@ import reflex
 from reflex import centralize
 
 from astrapy import bp, suggest_volume_extent
-from astrapy.geom3d import AstraStatic3DGeometry, Flat2DDetector
+from astrapy.geom3d import Geometry, Detector
 
 
 def geom(settings, angles, corrections: Any = True, verbose=None):
@@ -25,12 +25,12 @@ def geom(settings, angles, corrections: Any = True, verbose=None):
         hv = g.stage_rotation_matrix @ [0, 1, 0]
         vv = g.stage_rotation_matrix @ [0, 0, 1]
         g = reflex.centralize(static_geom)
-        det = Flat2DDetector(
+        det = Detector(
             rows=g.detector.rows,
             cols=g.detector.cols,
             pixel_width=g.detector.pixel_width,
             pixel_height=g.detector.pixel_height)
-        geom = AstraStatic3DGeometry(
+        geom = Geometry(
             tube_pos=g.tube_position,
             det_pos=g.detector_position,
             u_unit=hv,
@@ -50,17 +50,13 @@ def reconstruct(
     proj_ids,
     nr_angles_per_rot=None,
     rot=2 * np.pi,
-    reco_interval=None,
     plot_pyqtgraph=False,
     corrections: Any = True,
-    vol_scaling_factor: float = 1.,
 ):
     settings = reflex.Settings.from_path(settings_path)
     if nr_angles_per_rot is None:
         nr_angles_per_rot = len(proj_ids)
     angles = proj_ids * rot / nr_angles_per_rot
-    if reco_interval is None:
-        reco_interval = int(np.ceil(2 * np.pi * nr_angles_per_rot / rot))
 
     darks = reflex.darks(darks_path)
     whites = reflex.flats(flats_path)
@@ -77,12 +73,13 @@ def reconstruct(
 
         white = cp.squeeze(cp.array(whites))
 
-    def _preproc_projs(projs: cp.ndarray):
-        # remove darkfield from projections
-        cp.subtract(projs, dark, out=projs)
-        cp.divide(projs, white, out=projs)  # flatfield the projections
-        cp.log(projs, out=projs)  # take -log to linearize detector values
-        return cp.multiply(projs, -1, out=projs)  # sunny side up
+    def _preproc(projs):
+        xp = cp.get_array_module(projs[0])
+        projs = xp.asarray(projs)
+        xp.subtract(projs, dark, out=projs)  # remove darkfield
+        xp.divide(projs, white, out=projs)
+        xp.log(projs, out=projs)  # take -log to linearize detector values
+        xp.multiply(projs, -1, out=projs)  # sunny side up
 
     geometry = geom(settings, angles, corrections)
 
@@ -91,10 +88,10 @@ def reconstruct(
     vol = bp(projections,
              geometry,
              (voxels_x, None, None),
-             np.array(vol_min) * vol_scaling_factor,
-             np.array(vol_max) * vol_scaling_factor,
+             np.array(vol_min),
+             np.array(vol_max),
              chunk_size=50,
-             fpreproc=_preproc_projs)
+             preproc_fn=_preproc)
 
     if plot_pyqtgraph:
         import pyqtgraph as pq
@@ -121,5 +118,4 @@ if __name__ == '__main__':
         voxels_x=400,
         proj_ids=np.arange(1201),
         plot_pyqtgraph=True,
-        corrections=True,
-        vol_scaling_factor=.7)
+        corrections=True)

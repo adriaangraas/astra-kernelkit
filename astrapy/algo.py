@@ -1,6 +1,6 @@
 import copy
 import warnings
-from typing import Any, Sequence, Sized
+from typing import Any, Callable, Sequence, Sized
 
 import numpy as np
 from tqdm import tqdm
@@ -62,11 +62,40 @@ def _voxel_size_from_wished_shape(wished_shape: Sequence,
     return voxel_size.astype(np.float)
 
 
-def _parse_vol_params(geometries, wished_shape,
-                      volume_extent_min, volume_extent_max):
+def _parse_vol_params_from_extent(geometries, volume_shape,
+                                  wished_extent_min, wished_extent_max):
     vol_extents_given = (
-        volume_extent_min is None and volume_extent_max is None)
-    if vol_extents_given:
+        wished_extent_min is not None and wished_extent_max is not None)
+    if not vol_extents_given:
+        wished_extent_min, wished_extent_max = suggest_volume_extent(
+            geometries[0], (0., 0., 0))  # assume geometry is centered
+
+    # compute voxel size from the users wished shape
+    voxel_size = _voxel_size_from_wished_shape(
+        volume_shape, wished_extent_min, wished_extent_max)
+
+    # make volume bigger to have isotropic voxels
+    # vol_size = np.array(wished_extent_max) - wished_extent_min
+    # actual_shape = np.ceil(vol_size / voxel_size).astype(np.int)
+    # actual_shape = np.ceil((vol_size / voxel_size) * np.max(voxel_size))
+    # compute actual volume size by rounded shape, and thence ext min/max
+    # scaling_ratio = (actual_shape * voxel_size) / vol_size
+    actual_ext_min = wished_extent_min / voxel_size * np.max(voxel_size)
+    actual_ext_max = wished_extent_max / voxel_size * np.max(voxel_size)
+    if not vol_extents_given:
+        if np.any([voxel_size != voxel_size[0]]):
+            warnings.warn(f"Volume extents are scaled to accomodate to "
+                          f" isotropic voxels and the given shape "
+                          f"of {volume_shape}")
+
+    return actual_ext_min, actual_ext_max
+
+
+def _parse_vol_params_from_shape(geometries, wished_shape,
+                                 volume_extent_min, volume_extent_max):
+    vol_extents_given = (
+        volume_extent_min is not None and volume_extent_max is not None)
+    if not vol_extents_given:
         volume_extent_min, volume_extent_max = suggest_volume_extent(
             geometries[0], (0., 0., 0))  # assume geometry is centered
     # compute voxel size from the users wished shape
@@ -92,10 +121,10 @@ def _parse_vol_params(geometries, wished_shape,
 def fp(
     volume: Any,
     geometry: Any,
-    projections: Sized = None,
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     chunk_size: int = 100,
+    out: Sized = None,
     **kwargs
 ):
     """
@@ -116,29 +145,33 @@ def fp(
     """
     kernel = kernels.ConeProjection()
 
-    if projections is None:
+    if out is None:
         # TODO: allocate in memory-friendly back-end (e.g. file-based)
-        projections = []
+        out = []
         for g in geometry:
-            d = np.zeros((g.detector.rows, g.detector.cols))
-            projections.append(d)
+            d = np.zeros((g.detector.rows, g.detector.cols), dtype=np.float32)
+            out.append(d)
 
-    vol_shp, vol_ext_min, vol_ext_max = _parse_vol_params(
-        geometry, volume.shape, volume_extent_min, volume_extent_max)
+    vol_ext_min, vol_ext_max = _parse_vol_params_from_extent(
+        geometry,
+        volume.shape,
+        volume_extent_min,
+        volume_extent_max)
+
     executor = kernels.chunk_coneprojection(
         kernel,
-        volume=volume,
+        volume=volume.astype(np.float32),
         volume_extent_min=vol_ext_min,
         volume_extent_max=vol_ext_max,
         chunk_size=chunk_size,
-        projections_cpu=projections,
+        projections_cpu=out,
         geometries=geometry,
         **kwargs)
 
     for _ in tqdm(executor):
         pass
 
-    return projections
+    return out
 
 
 def bp(
@@ -147,8 +180,9 @@ def bp(
     volume_shape: Sequence,
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
-    chunk_size: int = 1000,
+    chunk_size: int = 100,
     filter: Any = 'ram_lak',
+    preproc_fn: Callable = None,
     **kwargs):
     """
     Executes `kernel`
@@ -177,7 +211,7 @@ def bp(
         # TODO: allow None and auto infer good chunk size
         raise NotImplementedError()
 
-    vol_shp, vol_ext_min, vol_ext_max = _parse_vol_params(
+    vol_shp, vol_ext_min, vol_ext_max = _parse_vol_params_from_shape(
         geometry, volume_shape, volume_extent_min, volume_extent_max)
 
     executor = kernels.chunk_conebackprojection(
@@ -189,6 +223,7 @@ def bp(
         volume_extent_max=vol_ext_max,
         chunk_size=chunk_size,
         filter=filter,
+        preproc_fn=preproc_fn,
         **kwargs)
 
     for volume_gpu in tqdm(executor):

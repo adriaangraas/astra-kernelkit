@@ -11,14 +11,14 @@ from astrapy.kernel import (_copy_to_symbol, _copy_to_texture, _cuda_float4,
                             _texture_shape)
 
 
-def _normalize_geom(geometry: AstraStatic3DGeometry,
+def _normalize_geom(geometry: Geometry,
                     volume_extent_min: Sequence,
                     volume_extent_max: Sequence,
                     volume_voxel_size: Sequence,
                     volume_rotation: Sequence = (0., 0., 0.)):
     shift(geometry, -(np.array(volume_extent_min) + volume_extent_max) / 2)
     scale(geometry, np.array(volume_voxel_size))
-    rotate(geometry, *volume_rotation)
+    rotate_inplace(geometry, *volume_rotation)
 
 
 class ConeProjection(Kernel):
@@ -297,7 +297,7 @@ class ConeBackprojection(Kernel):
                      cp.float32(vox_volume)))
 
     @staticmethod
-    def _geom2params(geom: AstraStatic3DGeometry,
+    def _geom2params(geom: Geometry,
                      voxel_size: Sequence,
                      fdk_weighting: bool = False):
         """Precomputed kernel parameters
@@ -392,7 +392,8 @@ def chunk_coneprojection(
     assert chunk_size > 0
     volume_texture = _copy_to_texture(volume)
     with cp.cuda.stream.Stream() as stream:
-        for start_proj in range(0, len(geometries), chunk_size):
+        for start_proj in tqdm(range(0, len(geometries), chunk_size),
+            desc="Forward projecting"):
             next_proj = min(start_proj + chunk_size, len(geometries))
             sub_projs = projections_cpu[start_proj:next_proj]
             projs_gpu = [cp.zeros(p.shape, dtype=dtype) for p in sub_projs]
@@ -423,7 +424,7 @@ def chunk_conebackprojection(
     chunk_size: int,
     dtype=cp.float32,
     filter: Any = None,
-    fpreproc: Callable = None,
+    preproc_fn: Callable = None,
     **kwargs):
     """
     Allocates GPU memory for only `chunk_size` projection images, then
@@ -433,14 +434,15 @@ def chunk_conebackprojection(
     #  keeping the kernels write in the last dim
     volume = cp.zeros(tuple(volume_shape), dtype=dtype)
     with cp.cuda.stream.Stream() as stream:
-        for start in tqdm(range(0, len(geometries), chunk_size)):
+        for start in tqdm(range(0, len(geometries), chunk_size),
+                          desc="Backprojecting"):
             end = min(start + chunk_size, len(geometries))
             sub_geoms = geometries[start:end]
             sub_projs = projections_cpu[start:end]
             sub_projs_gpu = cp.asarray(sub_projs)
 
-            if fpreproc is not None:
-                fpreproc(sub_projs_gpu)
+            if preproc_fn is not None:
+                preproc_fn(sub_projs_gpu)
                 stream.synchronize()
 
             process.preweight(sub_projs_gpu, sub_geoms)

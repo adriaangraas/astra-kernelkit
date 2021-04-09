@@ -4,9 +4,9 @@ import cupy as cp
 import numpy as np
 import pytest
 
-from astrapy.geom3d import Flat2DDetector
+from astrapy.geom3d import Detector
 from astrapy.kernel import _copy_to_texture
-from astrapy.kernels import (AstraStatic3DGeometry, ConeBackprojection,
+from astrapy.kernels import (Geometry, ConeBackprojection,
                              ConeProjection)
 from astrapy.process import preweight
 
@@ -43,12 +43,12 @@ def geom(rows=9,
          det_dist=5.,
          px_w=1.,
          px_h=1.):
-    return AstraStatic3DGeometry(
+    return Geometry(
         [-tube_dist, 0, 0],
         [det_dist, 0, 0],
         [0, 1, 0],
         [0, 0, 1],
-        Flat2DDetector(rows, cols, px_w, px_h))
+        Detector(rows, cols, px_w, px_h))
 
 
 @pytest.mark.parametrize(
