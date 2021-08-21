@@ -125,7 +125,7 @@ class Kernel(ABC):
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> type(None):
-        # note we don't want cuda to return anything!
+        # note we don't want kernels to return anything!
         # they work in-place and this would make batching more difficult
         pass
 
