@@ -1,4 +1,3 @@
-import copy
 from typing import Any, Callable, Sized
 
 from tqdm import tqdm
@@ -26,8 +25,8 @@ class ConeProjection(Kernel):
     COLS_PER_THREAD = 32
     ROWS_PER_BLOCK = 32
 
-    def __init__(self, *args, **kwargs):
-        super().__init__('cone_fp.cu', *args, **kwargs)
+    def __init__(self, *args):
+        super().__init__('cone_fp.cu', *args)
 
     def __call__(
         self,
@@ -109,8 +108,8 @@ class ConeProjection(Kernel):
         module = self._compile(
             names=names,
             template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
-                    'cols_per_thread': self.COLS_PER_THREAD,
-                    'nr_projs_global': len(norm_geoms)})
+                             'cols_per_thread': self.COLS_PER_THREAD,
+                             'nr_projs_global': len(norm_geoms)})
         funcs = [module.get_function(n) for n in names]
         self._upload_geometries(norm_geoms, module)
 
@@ -204,8 +203,9 @@ class ConeBackprojection(Kernel):
     VOL_BLOCK = (16, 32, 6)
     LIMIT_PROJS_PER_BLOCK = 32
 
-    def __init__(self):
+    def __init__(self, min_limit_projs: int = 1024):
         super().__init__('cone_bp.cu')
+        self._min_limit_projs = min_limit_projs
 
     def __call__(self,
                  projections_textures: Any,
@@ -264,15 +264,15 @@ class ConeBackprojection(Kernel):
         vox_volume = voxel_volume(
             volume.shape, volume_extent_min, volume_extent_max)
 
+        lim_projs = np.max((len(geometries), self._min_limit_projs))
         module = self._compile(
             names=('cone_bp',),
             template_kwargs={'vol_block_x': self.VOL_BLOCK[0],
-                    'vol_block_y': self.VOL_BLOCK[1],
-                    'vol_block_z': self.VOL_BLOCK[2],
-                    'nr_projs_block': self.LIMIT_PROJS_PER_BLOCK,
-                    'nr_projs_global': len(geometries),
-                    'texture3D': compile_use_texture3D}
-        )
+                             'vol_block_y': self.VOL_BLOCK[1],
+                             'vol_block_z': self.VOL_BLOCK[2],
+                             'nr_projs_block': self.LIMIT_PROJS_PER_BLOCK,
+                             'nr_projs_global': lim_projs,
+                             'texture3D': compile_use_texture3D})
         cone_bp = module.get_function("cone_bp")
 
         params = []  # precomputed kernel parameters
@@ -393,7 +393,7 @@ def chunk_coneprojection(
     volume_texture = _copy_to_texture(volume)
     with cp.cuda.stream.Stream() as stream:
         for start_proj in tqdm(range(0, len(geometries), chunk_size),
-            desc="Forward projecting"):
+                               desc="Forward projecting"):
             next_proj = min(start_proj + chunk_size, len(geometries))
             sub_projs = projections_cpu[start_proj:next_proj]
             projs_gpu = [cp.zeros(p.shape, dtype=dtype) for p in sub_projs]
