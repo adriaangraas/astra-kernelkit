@@ -447,7 +447,7 @@ def chunk_conebackprojection(
 
             process.preweight(sub_projs_gpu, sub_geoms)
             if filter is not None:
-                process.filter(sub_projs_gpu)
+                process.filter(sub_projs_gpu, filter=filter)
                 stream.synchronize()
 
             projs_txt = _copy_to_texture(sub_projs_gpu)

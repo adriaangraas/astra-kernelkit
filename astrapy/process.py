@@ -61,24 +61,41 @@ def _ramlak_filter(num, xp=cp):
     g = xp.zeros(len(n))
     g[0] = 0.25
     g[1::2] = -1 / (xp.pi * n[1::2])**2
-    return 2 * xp.real(xp.fft.fft(g))
+    return 4 * xp.real(xp.fft.fft(g))
 
 
-def filter(projections, verbose=False):
+def filter(projections, verbose=False, filter='ramlak'):
+    if filter == 'ramlak_fourier':
+        return _ramlak_filter_fourier(projections, verbose)
+    elif filter == 'ramlak':
+        xp = cp.get_array_module(projections[0])
+        # this function follows structurally scikit-image's iradon()
+        padding_shape = max(64, int(2 ** xp.ceil(xp.log2(2 * projections[0].shape[1]))))
+        ramlak = _ramlak_filter(padding_shape, xp=xp)
+        p_tmp = xp.empty((projections[0].shape[0], padding_shape))
+        for p in tqdm(projections, desc="Filtering", disable=not verbose):
+            assert cp.get_array_module(p) == xp, (
+                "Arrays need to be all cupy or all numpy.")
+            p_tmp[...] = xp.pad(
+                p, ((0, 0), (0, padding_shape - projections[0].shape[1])),
+                mode='constant', constant_values=0)
+            f = xp.fft.fft(p_tmp) * ramlak  # complex mult
+            p_tmp[...] = xp.real(xp.fft.ifft(f, n=p_tmp.shape[1]))
+            p[...] = p_tmp[..., :p.shape[1]]
+    else:
+        raise ValueError(f"Filter {filter} unknown.")
+
+
+def _ramlak_filter_fourier(projections, verbose=False):
     xp = cp.get_array_module(projections[0])
-    # this function follows structurally scikit-image's iradon()
-    padding_shape = max(64, int(2 ** np.ceil(np.log2(2 * projections[0].shape[1]))))
-    ramlak = _ramlak_filter(padding_shape, xp=xp)
-    p_tmp = xp.empty((projections[0].shape[0], padding_shape))
+    ramlak = xp.linspace(-1, 1, num=projections[0].shape[1] // 2 + 1)
+    ramlak = xp.abs(ramlak)
     for p in tqdm(projections, desc="Filtering", disable=not verbose):
         assert cp.get_array_module(p) == xp, (
             "Arrays need to be all cupy or all numpy.")
-        p_tmp[...] = xp.pad(
-            p, ((0, 0), (0, padding_shape - projections[0].shape[1])),
-            mode='constant', constant_values=0)
-        f = xp.fft.fft(p_tmp) * ramlak  # complex mult
-        p_tmp[...] = xp.real(xp.fft.ifft(f, n=p_tmp.shape[1]))
-        p[...] = p_tmp[..., :p.shape[1]]
+        f = xp.fft.fftshift(xp.fft.rfft(p))
+        f *= ramlak  # complex mult with ramp filter
+        p[...] = xp.fft.irfft(xp.fft.ifftshift(f), n=p.shape[1])
 
 
 def preweight(projections,

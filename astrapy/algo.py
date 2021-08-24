@@ -181,7 +181,7 @@ def bp(
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     chunk_size: int = 100,
-    filter: Any = 'ram_lak',
+    filter: Any = 'ramlak',
     preproc_fn: Callable = None,
     **kwargs):
     """
