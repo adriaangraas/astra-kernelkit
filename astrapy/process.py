@@ -70,7 +70,7 @@ def filter(projections, verbose=False, filter='ramlak'):
     elif filter == 'ramlak':
         xp = cp.get_array_module(projections[0])
         # this function follows structurally scikit-image's iradon()
-        padding_shape = max(64, int(2 ** xp.ceil(xp.log2(2 * projections[0].shape[1]))))
+        padding_shape = max(64, int(2 ** int(xp.ceil(xp.log2(2 * projections[0].shape[1])))))
         ramlak = _ramlak_filter(padding_shape, xp=xp)
         p_tmp = xp.empty((projections[0].shape[0], padding_shape))
         for p in tqdm(projections, desc="Filtering", disable=not verbose):
