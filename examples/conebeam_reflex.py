@@ -5,8 +5,8 @@ import numpy as np
 import reflex
 from reflex import centralize
 
-from astrapy import bp, suggest_volume_extent
-from astrapy.geom import Geometry, Detector
+from astrapy import fdk, sirt_experimental, suggest_volume_extent
+from astrapy.geom import Detector, Geometry
 
 
 def geom(settings, angles, corrections: Any = True, verbose=None):
@@ -75,23 +75,31 @@ def reconstruct(
 
     def _preproc(projs):
         xp = cp.get_array_module(projs[0])
-        projs = xp.asarray(projs)
-        xp.subtract(projs, dark, out=projs)  # remove darkfield
-        xp.divide(projs, white, out=projs)
-        xp.log(projs, out=projs)  # take -log to linearize detector values
-        xp.multiply(projs, -1, out=projs)  # sunny side up
+        for p in projs:
+            xp.subtract(p, dark, out=p)  # remove darkfield
+            xp.divide(p, white, out=p)
+            xp.log(p, out=p)  # take -log to linearize detector values
+            xp.multiply(p, -1, out=p)  # sunny side up
 
     geometry = geom(settings, angles, corrections)
 
     vol_min, vol_max = suggest_volume_extent(geometry[0])
     projections = reflex.projs(projs_path, proj_ids)
-    vol = bp(projections,
-             geometry,
-             (voxels_x, None, None),
-             np.array(vol_min),
-             np.array(vol_max),
-             chunk_size=50,
-             preproc_fn=_preproc)
+    # vol = fdk(projections,
+    #           geometry,
+    #           (voxels_x, None, None),
+    #           np.array(vol_min),
+    #           np.array(vol_max),
+    #           chunk_size=50,
+    #           preproc_fn=_preproc)
+
+    vol = sirt_experimental(projections,
+                            geometry,
+                            (voxels_x, None, None),
+                            np.array(vol_min),
+                            np.array(vol_max),
+                            iters=50,
+                            preproc_fn=_preproc)
 
     if plot_pyqtgraph:
         import pyqtgraph as pq
@@ -115,7 +123,7 @@ if __name__ == '__main__':
         projs_path=path,
         darks_path=path,
         flats_path=path,
-        voxels_x=400,
-        proj_ids=np.arange(1201),
+        voxels_x=200,
+        proj_ids=np.arange(0, 1201, 5),
         plot_pyqtgraph=True,
         corrections=True)

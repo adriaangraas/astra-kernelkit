@@ -122,6 +122,112 @@ def _parse_vol_params_from_shape(geometries, wished_shape,
     return actual_shape, actual_ext_min, actual_ext_max
 
 
+def _coneprojection(
+    kernel: ConeProjection,
+    volume,
+    volume_extent_min,
+    volume_extent_max,
+    chunk_size: int,
+    geometries: list,
+    projections_cpu: np.ndarray,
+    dtype=cp.float32,
+    **kwargs):
+    """
+    Allocates GPU memory for only `chunk_size` projection images, then
+    repeats the kernel call into the same GPU memory.
+
+    :param kernel:
+    :param chunk_size:
+    :param geometries:
+    :param projections_cpu:
+    :param kwargs:
+    """
+    assert chunk_size > 0
+    volume_texture = _to_texture(volume)
+    with cp.cuda.stream.Stream() as stream:
+        for start_proj in tqdm(range(0, len(geometries), chunk_size),
+                               desc="Forward projecting"):
+            next_proj = min(start_proj + chunk_size, len(geometries))
+            sub_projs = projections_cpu[start_proj:next_proj]
+            projs_gpu = [cp.zeros(p.shape, dtype=dtype) for p in sub_projs]
+            stream.synchronize()
+
+            kernel(volume_texture,
+                   volume_extent_min,
+                   volume_extent_max,
+                   geometries[start_proj:next_proj],
+                   projs_gpu,
+                   **kwargs)
+            stream.synchronize()
+
+            for cpu, gpu in zip(sub_projs, projs_gpu):
+                # TODO: check performance is improved with async/pinned memory
+                cpu[:] = gpu.get()
+
+            yield
+
+
+def _conebackprojection(
+    kernel: ConeBackprojection,
+    projections: list,
+    geometries: list,
+    volume_shape: Sequence,
+    volume_extent_min: Sequence,
+    volume_extent_max: Sequence,
+    chunk_size: int = None,
+    dtype=cp.float32,
+    filter: Any = None,
+    preproc_fn: Callable = None,
+    **kwargs):
+    """
+    If one of the `projections` is on CPU, use `chunk_size` to upload, process,
+    compute, and download projections in batches. Alternatively, if `projections`
+    lives on the GPU, compute all as a whole.
+    """
+
+    def _preproc_to_texture(projs, geoms):
+        if preproc_fn is not None:
+            preproc_fn(projs)
+            stream.synchronize()
+
+        if filter is not None:
+            process.preweight(projs, geoms)
+            process.filter(projs, filter=filter)
+            stream.synchronize()
+
+        return _to_texture(projs)
+
+    volume = cp.zeros(tuple(volume_shape), dtype=dtype)
+    def _compute(projs_txt, geoms):
+        kernel(
+            projs_txt,
+            geoms,
+            volume,
+            volume_extent_min,
+            volume_extent_max)
+
+    # run chunk-based algorithm if one or more projections are on CPU
+    if np.any([isinstance(p, np.ndarray) for p in projections]):
+        assert chunk_size > 0
+        with cp.cuda.stream.Stream() as stream:
+            for start in tqdm(range(0, len(geometries), chunk_size),
+                              desc="Backprojecting"):
+                end = min(start + chunk_size, len(geometries))
+                sub_geoms = geometries[start:end]
+                sub_projs = projections[start:end]
+                sub_projs_gpu = cp.asarray(sub_projs)
+                projs_txt = _preproc_to_texture(sub_projs_gpu, sub_geoms)
+                stream.synchronize()
+                _compute(projs_txt, sub_geoms)
+                stream.synchronize()
+                yield volume
+    else:
+        projs_txt = _preproc_to_texture(projections, geometries)
+        _compute(projs_txt, geometries)
+
+    return volume
+
+
 def fp(
     volume: Any,
     geometry: Any,
@@ -162,7 +268,7 @@ def fp(
         volume_extent_min,
         volume_extent_max)
 
-    executor = kernels.chunk_coneprojection(
+    executor = _coneprojection(
         kernel,
         volume=volume.astype(np.float32),
         volume_extent_min=vol_ext_min,
@@ -178,14 +284,38 @@ def fp(
     return out
 
 
-def bp(
-    projections: np.ndarray,
+def fdk(
+    projections: Any,
     geometry: Any,
     volume_shape: Sequence,
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     chunk_size: int = 100,
     filter: Any = 'ramlak',
+    preproc_fn: Callable = None,
+    **kwargs):
+    """Feldkamp-Davis-Kress algorithm"""
+
+    # note: calling bp with filter
+    return bp(projections,
+              geometry,
+              volume_shape,
+              volume_extent_min,
+              volume_extent_max,
+              chunk_size,
+              filter=filter,
+              preproc_fn=preproc_fn,
+              **kwargs)
+
+
+def bp(
+    projections: Any,
+    geometry: Any,
+    volume_shape: Sequence,
+    volume_extent_min: Sequence = None,
+    volume_extent_max: Sequence = None,
+    chunk_size: int = 100,
+    filter: Any = None,
     preproc_fn: Callable = None,
     **kwargs):
     """
@@ -218,9 +348,9 @@ def bp(
     vol_shp, vol_ext_min, vol_ext_max = _parse_vol_params_from_shape(
         geometry, volume_shape, volume_extent_min, volume_extent_max)
 
-    executor = kernels.chunk_conebackprojection(
+    executor = _conebackprojection(
         kernels.ConeBackprojection(),
-        projections_cpu=projections,
+        projections=projections,
         geometries=geometry,
         volume_shape=vol_shp,
         volume_extent_min=vol_ext_min,
@@ -234,3 +364,109 @@ def bp(
         pass
 
     return volume_gpu.get()
+
+
+def sirt_experimental(
+    projections: np.ndarray,
+    geometry: Any,
+    volume_shape: Sequence,
+    volume_extent_min: Sequence = None,
+    volume_extent_max: Sequence = None,
+    preproc_fn: Callable = None,
+    iters: int = 100,
+    dtype = cp.float32,
+    verbose = True,
+    **kwargs):
+    """Simulateneous Iterative Reconstruction Technique
+
+    TODO(Adriaan): There is a bug with using aspitched() and `pitch2d`
+        memory allocation, which might be faster than Z-array texture. The
+        bug is reproduced with a non-pitch detector dimension and the
+        `aspitched` lines below uncommented. Use plotting to see weird
+        backprojection residual that is probably the cause of the
+        some miscomputation on wrong dimensions. For now I will use
+        CUDAarray which takes a bit more memory which is also ASTRA's
+        way, and just takes a bit memory.
+
+    :param projections:
+    :param geometry:
+    :param volume_shape:
+    :param volume_extent_min:
+    :param volume_extent_max:
+    :param preproc_fn:
+    :param iters:
+    :param dtype:
+    :param kwargs:
+    :return:
+    """
+    if len(projections) != len(geometry):
+        raise ValueError
+
+    vol_shp, vol_ext_min, vol_ext_max = _parse_vol_params_from_shape(
+        geometry, volume_shape, volume_extent_min, volume_extent_max)
+
+    # prevent copying if already in GPU memory, otherwise copy to GPU
+    y = [cp.array(p, copy=False) for p in projections]
+    # y_tmp = [aspitched(cp.ones_like(p)) for p in y]
+    y_tmp = [cp.ones_like(p) for p in y]  # intermediate variable
+    x = cp.zeros(vol_shp, dtype=dtype)  # output volume
+    x_tmp = cp.ones_like(x)
+
+    if preproc_fn is not None:
+        preproc_fn(y)
+
+    fp = kernels.ConeProjection()
+    bp = kernels.ConeBackprojection()
+
+    def A(x, out=None):
+        if out is None:
+            # out = [aspitched(cp.zeros_like(p)) for p in y]
+            out = [cp.zeros_like(p) for p in y]
+        else:
+            for p in out:
+                p.fill(0.)
+
+        x_txt = _to_texture(x)
+        fp(x_txt, vol_ext_min, vol_ext_max, geometry, out)
+        return out
+
+    def A_T(y, out=None):
+        if out is None:
+            out = cp.zeros_like(x)
+        else:
+            out.fill(0.)
+
+        y_txt = [_to_texture(p) for p in y]
+        bp(y_txt, geometry, out, vol_ext_min, vol_ext_max)
+        return out
+
+    # compute scaling matrix C
+    C = A_T(y_tmp)
+    cp.divide(1., C, out=C)  # TODO(Adriaan): there is no `where=` in CuPy
+    C[C == cp.infty] = 0.
+
+    # compute scaling operator R
+    R = A(x_tmp)
+    for p in R:
+        cp.divide(1., p, out=p)  # TODO(Adriaan): there is no `where=` in CuPy
+        p[p == cp.infty] = 0.
+
+    # import matplotlib.pyplot as plt
+    # plt.figure()
+    for _ in tqdm(range(iters), disable=not verbose, desc="SIRT"):
+        A(x, out=y_tmp)  # forward project `x` into `y_tmp`
+        # compute residual in `y_tmp`, apply R
+        for p_tmp, p, r in zip(y_tmp, y, R):
+            p_tmp -= p  # residual
+            p_tmp *= r
+
+        # plt.cla()
+        # plt.imshow(y_tmp[0].get(), vmax=0.1)
+        # plt.pause(.15)
+
+        # backproject residual into `x_tmp`, apply C
+        A_T(y_tmp, x_tmp)
+        x_tmp *= C
+        x -= x_tmp  # update `x`
+
+    return x.get()
