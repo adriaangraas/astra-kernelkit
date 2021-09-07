@@ -1,8 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from astrapy import bp, fp
-from astrapy import Detector, Geometry, rotate
+from astrapy import Detector, Geometry, fdk, fp, rotate
 
 # geometry spinning
 geom_t0 = Geometry(
@@ -11,9 +10,10 @@ geom_t0 = Geometry(
     [0, 1, 0],
     [0, 0, 1],
     Detector(99, 141, .01, .01))
+geom_t0 = rotate(geom_t0, yaw=.5*np.pi, roll=.2 * np.pi, pitch=.1 * np.pi)
 
-angles = np.linspace(0, 8 * np.pi, 719)
-geoms = [rotate(geom_t0, roll=a, yaw=a) for a in angles]
+angles = np.linspace(0, 2 * np.pi, 719)
+geoms = [rotate(geom_t0, yaw=a) for a in angles]
 vol_min, vol_max = [-.2] * 3, [.2] * 3
 
 # cube with random voxels
@@ -32,7 +32,7 @@ for p in projs[0:100:2]:
 plt.close()
 
 # backproject
-vol2 = bp(projs, geoms, vol.shape, vol_min, vol_max)
+vol2 = fdk(projs, geoms, vol.shape, vol_min, vol_max)
 plt.figure()
 for sl in range(0, vol2.shape[-1]):
     plt.cla()
