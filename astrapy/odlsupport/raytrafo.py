@@ -179,13 +179,13 @@ class RayTrafoImpl:
               and isinstance(self.geometry.detector, Flat2dDetector)
               and self.geometry.ndim == 3):
             geom = _cone_3d_to_geom3d(self.geometry)
-            volume = astrapy.bp(proj_data.data,
-                                geom,
-                                volume_shape=self.vol_space.shape,
-                                volume_extent_min=self.vol_space.min_pt,
-                                volume_extent_max=self.vol_space.max_pt,
-                                chunk_size=300,
-                                filter=None if not self.filter else 'ram-lak')
+            volume = astrapy.fdk(proj_data.data,
+                                 geom,
+                                 volume_shape=self.vol_space.shape,
+                                 volume_extent_min=self.vol_space.min_pt,
+                                 volume_extent_max=self.vol_space.max_pt,
+                                 chunk_size=300,
+                                 filter=None if not self.filter else 'ram-lak')
         else:
             raise NotImplementedError(
                 'Unknown AstraPy geometry type {!r}, incorrect detector,'

@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 USE_DEPRICATED_FILTER = True
-from astrapy import bp, fp
+from astrapy import fdk, fp
 from astrapy import Detector, Geometry, rotate
 
 # geometry spinning
@@ -33,12 +33,12 @@ projs = fp(vol, geoms, vol_min, vol_max)
 # plt.close()
 
 # backproject
-vol2 = bp(projs, geoms, vol.shape, vol_min, vol_max, filter='ramlak')
+vol2 = fdk(projs, geoms, vol.shape, vol_min, vol_max, filter='ramlak')
 plt.figure()
 plt.title("Ram & Lak (spatial, Kak & Slaney)")
 plt.imshow(vol2[..., 50])
 
-vol3 = bp(projs, geoms, vol.shape, vol_min, vol_max, filter='ramlak_fourier')
+vol3 = fdk(projs, geoms, vol.shape, vol_min, vol_max, filter='ramlak_fourier')
 plt.figure()
 plt.title("Ram & Lak (fourier ramp)")
 plt.imshow(vol3[..., 50])

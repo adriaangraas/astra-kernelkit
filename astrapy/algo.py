@@ -2,11 +2,15 @@ import copy
 import warnings
 from typing import Any, Callable, Sequence, Sized
 
+import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy import kernels
+from astrapy import kernels, process
+from astrapy.data import aspitched
 from astrapy.geom import shift
+from astrapy.kernel import _to_texture
+from astrapy.kernels import ConeBackprojection, ConeProjection
 
 
 def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):

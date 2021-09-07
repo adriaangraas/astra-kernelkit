@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np
 
-from astrapy.kernel import _copy_to_texture
+from astrapy.kernel import _to_texture
 
 
 def test_copy_to_texture():
@@ -23,7 +23,7 @@ def test_copy_to_texture():
     # x1[..., 1] = 42.
     print(x1)
 
-    txt = _copy_to_texture(x1)
+    txt = _to_texture(x1)
     print(x1.shape)  # still (5, 3, 2), good
     x2 = cp.zeros_like(x1, dtype=cp.float32)  # expect 5, 3, 2
     kernel((1, 1, 1),

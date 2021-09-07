@@ -1,13 +1,9 @@
-from typing import Any, Callable, Sized
+from typing import Any, Sized
 
-from tqdm import tqdm
-
-from astrapy import process
 from astrapy.data import *
 from astrapy.geom import *
 from astrapy.kernel import *
-from astrapy.kernel import (_copy_to_symbol, _copy_to_texture, _cuda_float4,
-                            _texture_shape)
+from astrapy.kernel import (_copy_to_symbol, _cuda_float4, _texture_shape)
 
 
 def _normalize_geom(geometry: Geometry,
@@ -367,98 +363,3 @@ class ConeBackprojection(Kernel):
             assert np.allclose(denominator.w, 1.)
 
         return numerator_u, numerator_v, denominator
-
-
-def chunk_coneprojection(
-    kernel: ConeProjection,
-    volume,
-    volume_extent_min,
-    volume_extent_max,
-    chunk_size: int,
-    geometries: list,
-    projections_cpu: np.ndarray,
-    dtype=cp.float32,
-    **kwargs):
-    """
-    Allocates GPU memory for only `chunk_size` projection images, then
-    repeats the kernel call into the same GPU memory.
-
-    :param kernel:
-    :param chunk_size:
-    :param geometries:
-    :param projections_cpu:
-    :param kwargs:
-    """
-    assert chunk_size > 0
-    volume_texture = _copy_to_texture(volume)
-    with cp.cuda.stream.Stream() as stream:
-        for start_proj in tqdm(range(0, len(geometries), chunk_size),
-                               desc="Forward projecting"):
-            next_proj = min(start_proj + chunk_size, len(geometries))
-            sub_projs = projections_cpu[start_proj:next_proj]
-            projs_gpu = [cp.zeros(p.shape, dtype=dtype) for p in sub_projs]
-            stream.synchronize()
-
-            kernel(volume_texture,
-                   volume_extent_min,
-                   volume_extent_max,
-                   geometries[start_proj:next_proj],
-                   projs_gpu,
-                   **kwargs)
-            stream.synchronize()
-
-            for cpu, gpu in zip(sub_projs, projs_gpu):
-                # TODO: check performance is improved with async/pinned memory
-                cpu[:] = gpu.get()
-
-            yield
-
-
-def chunk_conebackprojection(
-    kernel: ConeBackprojection,
-    projections_cpu: np.ndarray,
-    geometries: list,
-    volume_shape: Sequence,
-    volume_extent_min: Sequence,
-    volume_extent_max: Sequence,
-    chunk_size: int,
-    dtype=cp.float32,
-    filter: Any = None,
-    preproc_fn: Callable = None,
-    **kwargs):
-    """
-    Allocates GPU memory for only `chunk_size` projection images, then
-    repeats the kernel call into the same GPU memory.
-    """
-    assert chunk_size > 0
-    #  keeping the kernels write in the last dim
-    volume = cp.zeros(tuple(volume_shape), dtype=dtype)
-    with cp.cuda.stream.Stream() as stream:
-        for start in tqdm(range(0, len(geometries), chunk_size),
-                          desc="Backprojecting"):
-            end = min(start + chunk_size, len(geometries))
-            sub_geoms = geometries[start:end]
-            sub_projs = projections_cpu[start:end]
-            sub_projs_gpu = cp.asarray(sub_projs)
-
-            if preproc_fn is not None:
-                preproc_fn(sub_projs_gpu)
-                stream.synchronize()
-
-            process.preweight(sub_projs_gpu, sub_geoms)
-            if filter is not None:
-                process.filter(sub_projs_gpu, filter=filter)
-                stream.synchronize()
-
-            projs_txt = _copy_to_texture(sub_projs_gpu)
-            stream.synchronize()
-
-            kernel(
-                projs_txt,
-                sub_geoms,
-                volume,
-                volume_extent_min,
-                volume_extent_max)
-            stream.synchronize()
-
-            yield volume

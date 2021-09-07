@@ -16,7 +16,7 @@ from cupy.cuda.runtime import (
 from astrapy.data import ispitched
 
 
-def _copy_to_texture(array, type='array') -> txt.TextureObject:
+def _to_texture(array, type='array') -> txt.TextureObject:
     """Creates a single-channel 2D/3D texture object of type float"""
     assert array.ndim in [2, 3]
     channel_desc = txt.ChannelFormatDescriptor(
