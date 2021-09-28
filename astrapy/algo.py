@@ -4,13 +4,11 @@ from typing import Any, Callable, Sequence, Sized
 
 import cupy as cp
 import numpy as np
-from tqdm import tqdm
-
 from astrapy import kernels, process
-from astrapy.data import aspitched
 from astrapy.geom import shift
 from astrapy.kernel import _to_texture
 from astrapy.kernels import ConeBackprojection, ConeProjection
+from tqdm import tqdm
 
 
 def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):
@@ -89,7 +87,7 @@ def _parse_vol_params_from_extent(geometries, volume_shape,
     if not vol_extents_given:
         if np.any([voxel_size != voxel_size[0]]):
             warnings.warn(f"Volume extents are scaled to accomodate to "
-                          f" isotropic voxels and the given shape "
+                          f"isotropic voxels and the given shape "
                           f"of {volume_shape}")
 
     return actual_ext_min, actual_ext_max
@@ -107,7 +105,9 @@ def _parse_vol_params_from_shape(geometries, wished_shape,
         wished_shape, volume_extent_min, volume_extent_max)
     # make volume slightly bigger to have isotropic voxels
     vol_size = np.array(volume_extent_max) - volume_extent_min
-    actual_shape = np.ceil(vol_size / voxel_size).astype(np.int)
+    # the problem with `np.ceil` below would be that numerical errors in division
+    # of vol_size / voxel_size will round up, therefore `np.round`.
+    actual_shape = np.round(vol_size / voxel_size).astype(np.int)
     # compute actual volume size by rounded shape, and thence ext min/max
     scaling_ratio = (actual_shape * voxel_size) / vol_size
     actual_ext_min = volume_extent_min * scaling_ratio
@@ -198,6 +198,7 @@ def _conebackprojection(
         return _to_texture(projs)
 
     volume = cp.zeros(tuple(volume_shape), dtype=dtype)
+
     def _compute(projs_txt, geoms):
         kernel(
             projs_txt,
@@ -317,6 +318,7 @@ def bp(
     chunk_size: int = 100,
     filter: Any = None,
     preproc_fn: Callable = None,
+    return_gpu: bool = False,
     **kwargs):
     """
     Executes `kernel`
@@ -363,6 +365,9 @@ def bp(
     for volume_gpu in tqdm(executor):
         pass
 
+    if return_gpu:
+        return volume_gpu
+
     return volume_gpu.get()
 
 
@@ -374,9 +379,13 @@ def sirt_experimental(
     volume_extent_max: Sequence = None,
     preproc_fn: Callable = None,
     iters: int = 100,
-    dtype = cp.float32,
-    verbose = True,
-    **kwargs):
+    dtype=cp.float32,
+    verbose: bool = True,
+    mask: Any = None,
+    x_0: Any = None,
+    min_constraint: float = None,
+    max_constraint: float = None,
+    return_gpu: bool = False):
     """Simulateneous Iterative Reconstruction Technique
 
     TODO(Adriaan): There is a bug with using aspitched() and `pitch2d`
@@ -400,17 +409,23 @@ def sirt_experimental(
     :return:
     """
     if len(projections) != len(geometry):
-        raise ValueError
+        raise ValueError("Number of projections does not match number of"
+                         " geometries.")
 
     vol_shp, vol_ext_min, vol_ext_max = _parse_vol_params_from_shape(
         geometry, volume_shape, volume_extent_min, volume_extent_max)
 
     # prevent copying if already in GPU memory, otherwise copy to GPU
     y = [cp.array(p, copy=False) for p in projections]
-    # y_tmp = [aspitched(cp.ones_like(p)) for p in y]
-    y_tmp = [cp.ones_like(p) for p in y]  # intermediate variable
-    x = cp.zeros(vol_shp, dtype=dtype)  # output volume
+
+    if x_0 is not None:
+        x = cp.asarray(x_0).astype(dtype)
+    else:
+        x = cp.zeros(vol_shp, dtype=dtype)  # output volume
+
     x_tmp = cp.ones_like(x)
+    if mask is not None:
+        mask = cp.asarray(mask).astype(dtype)
 
     if preproc_fn is not None:
         preproc_fn(y)
@@ -436,14 +451,24 @@ def sirt_experimental(
         else:
             out.fill(0.)
 
-        y_txt = [_to_texture(p) for p in y]
+        # y_txt = [_to_texture(p) for p in y]
+        y_txt = []
+        for p in y: # synchronous convertion to texture and deleteion
+            y_txt += [_to_texture(p)]
+            del p
+
+        del y  # just in case
+
         bp(y_txt, geometry, out, vol_ext_min, vol_ext_max)
         return out
 
     # compute scaling matrix C
+    # y_tmp = [aspitched(cp.ones_like(p)) for p in y]
+    y_tmp = [cp.ones_like(p) for p in y]  # intermediate variable
     C = A_T(y_tmp)
     cp.divide(1., C, out=C)  # TODO(Adriaan): there is no `where=` in CuPy
     C[C == cp.infty] = 0.
+    del y_tmp
 
     # compute scaling operator R
     R = A(x_tmp)
@@ -452,21 +477,41 @@ def sirt_experimental(
         p[p == cp.infty] = 0.
 
     # import matplotlib.pyplot as plt
-    # plt.figure()
-    for _ in tqdm(range(iters), disable=not verbose, desc="SIRT"):
-        A(x, out=y_tmp)  # forward project `x` into `y_tmp`
+    bar = tqdm(range(iters), disable=not verbose, desc="SIRT (starting...)")
+    for _ in bar:
+        # Note, not using `out`: `y_tmp` is not recycled because it would
+        # require `y_tmp` and its texture counterpart to be in memory at
+        # the same time. We take the memory-friendly and slightly more GPU
+        # intensive approach here.
+        y_tmp = A(x)  # forward project `x` into `y_tmp`
         # compute residual in `y_tmp`, apply R
         for p_tmp, p, r in zip(y_tmp, y, R):
             p_tmp -= p  # residual
             p_tmp *= r
 
-        # plt.cla()
-        # plt.imshow(y_tmp[0].get(), vmax=0.1)
-        # plt.pause(.15)
+        # for i in range(3):
+        #     if i == 1:
+        #         plt.figure(i)
+        #         plt.cla()
+        #         plt.imshow(y_tmp[i].get())
+        #         plt.pause(10.001)
+        #         res_norm_i = str(cp.linalg.norm(y_tmp[i]))
+        #         print(f"{i}: " + res_norm_i)
+
+        res_norm = str(sum([cp.linalg.norm(p) for p in y_tmp]))
+        bar.set_description(f"SIRT (res: {res_norm})")
 
         # backproject residual into `x_tmp`, apply C
         A_T(y_tmp, x_tmp)
+
         x_tmp *= C
         x -= x_tmp  # update `x`
+        if mask is not None:
+            x *= mask
+        if min_constraint is not None or max_constraint is not None:
+            cp.clip(x, a_min=min_constraint, a_max=max_constraint, out=x)
+
+    if return_gpu:
+        return x
 
     return x.get()
