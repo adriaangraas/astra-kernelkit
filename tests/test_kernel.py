@@ -4,7 +4,7 @@ import numpy as np
 from astrapy.kernel import _to_texture
 
 
-def test_copy_to_texture():
+def test_to_texture():
     kernel = cp.RawKernel(r'''
     extern "C" __global__
     void txt_test(texture<float, 3, cudaReadModeElementType> txt,
