@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Sequence, Tuple
 
 import cupy as cp
 import numpy as np
@@ -6,12 +6,12 @@ import numpy as np
 
 def voxel_size(volume_shape: Sequence,
                extent_min: Sequence,
-               extent_max: Sequence) -> np.ndarray:
+               extent_max: Sequence) -> Tuple[float, float, float]:
     """The physical size of a voxel."""
     n = np.array(volume_shape)
     dists = np.array(extent_max) - np.array(extent_min)
     shp = list(dists / n)
-    return np.array(shp)
+    return tuple(np.array(shp))
 
 
 def has_isotropic_voxels(volume_shape: Sequence,
@@ -30,7 +30,7 @@ def voxel_volume(volume_shape: Sequence,
     return float(np.prod(vox_size))
 
 
-def pitched_shape(array) -> tuple:
+def pitched_shape(array) -> Tuple[int, int, int]:
     assert array.flags.c_contiguous
     bytes = (int(np.ceil(array.shape[-1] * array.dtype.itemsize / 32)) * 32)
     items = bytes / array.dtype.itemsize
