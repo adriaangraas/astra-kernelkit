@@ -1,5 +1,6 @@
 import warnings
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from importlib import resources
 from typing import Sequence
 
@@ -7,7 +8,6 @@ import cupy as cp
 import cupy.cuda.texture as txt
 import jinja2
 import numpy as np
-from cupy.core.raw import RawModule
 from cupy.cuda.runtime import (
     cudaAddressModeBorder, cudaChannelFormatKindFloat, cudaFilterModeLinear,
     cudaReadModeElementType, cudaResourceTypeArray,
@@ -78,23 +78,31 @@ def _texture_shape(obj: txt.TextureObject) -> tuple:
     raise ValueError("Texture Resource Descriptor not understood.")
 
 
-def _copy_to_symbol(module: RawModule, name: str, array, dtype=np.float32):
+def _copy_to_symbol(module: cp.RawModule, name: str, array):
     """Copy array to address on GPU, e.g. constant memory
 
     Inspired by: https://github.com/cupy/cupy/issues/1703
     See also: https://docs.chainer.org/en/v1.3.1/_modules/cupy/creation/from_data.html
     """
     import ctypes
+    array = np.squeeze(array)
+    assert array.flags['C_CONTIGUOUS']
+    assert array.dtype == np.float32
     p = module.get_global(name)
-    a_cpu = np.ascontiguousarray(np.squeeze(array), dtype=dtype)
-    p.copy_from_async(a_cpu.ctypes.data_as(ctypes.c_void_p), a_cpu.nbytes)
+    # a_cpu = np.ascontiguousarray(np.squeeze(array), dtype=dtype)
+    if cp.get_array_module(array) == np:
+        p.copy_from_async(array.ctypes.data_as(ctypes.c_void_p), array.nbytes)
+    else:
+        p.copy_from_async(array.data, array.nbytes)
 
 
+@dataclass(frozen=True, order=True)
 class _cuda_float4:
     """Helper to encode CUDA float4 in the right order"""
-
-    def __init__(self, x, y, z, w):
-        self.x, self.y, self.z, self.w = x, y, z, w
+    x: int
+    y: int
+    z: int
+    w: int
 
     def to_list(self):
         return [self.x, self.y, self.z, self.w]
@@ -120,7 +128,7 @@ class Kernel(ABC):
         # we cannot load the source immediately because some template
         # arguments may only be known at runtime.
         self._cuda_source = resources.read_text('astrapy.cuda', resource)
-        self.__compilation_cache = None
+        self.__compilation_cache = {}
         self.__compilation_times = 0
 
     @abstractmethod
@@ -135,12 +143,13 @@ class Kernel(ABC):
 
     def __compile(self,
                   name_expressions,
-                  template_kwargs) -> RawModule:
+                  template_kwargs) -> cp.RawModule:
         """Renders Jinja2 template and imports kernel in CuPy"""
+        print(f"Compiling kernel {self.__class__.__name__}...")
         code = jinja2.Template(
             self.cuda_source,
             undefined=jinja2.StrictUndefined).render(**template_kwargs)
-        return RawModule(
+        return cp.RawModule(
             code=code,
             # --std is required for name expressions
             options=('--std=c++11',),  # TODO: error on c++17?
@@ -148,17 +157,21 @@ class Kernel(ABC):
 
     def _compile(self,
                  names: Sequence[str],
-                 template_kwargs: dict) -> RawModule:
-        if (self.__compilation_cache is None
-            or self.__compilation_cache[1] != names
-            or self.__compilation_cache[2] != template_kwargs):
-            self.__compilation_cache = (
-                self.__compile(names, template_kwargs), names, template_kwargs)
-            self.__compilation_times += 1
-            if self.__compilation_times > 5:
-                # technically the kernel is only compiled when a function
-                # is retrieved from it
-                warnings.warn(f"Module `{self.__class__}` has been recompiled "
-                              f"5 times, consider passing limits.")
+                 template_kwargs: dict) -> cp.RawModule:
+        h_names = hash(frozenset(names))
+        h_kwargs = hash(frozenset(template_kwargs.items()))
+        if not h_names in self.__compilation_cache:
+            self.__compilation_cache[h_names] = {}
 
-        return self.__compilation_cache[0]
+        if not h_kwargs in self.__compilation_cache[h_names]:
+            self.__compilation_times += 1
+            self.__compilation_cache[h_names][h_kwargs] = \
+                self.__compile(names, template_kwargs)
+
+        if self.__compilation_times > 5:
+            # technically the kernel is only compiled when a function
+            # is retrieved from it
+            warnings.warn(f"Module `{self.__class__.__name__}` has been recompiled "
+                          f"5 times, consider passing limits.")
+
+        return self.__compilation_cache[h_names][h_kwargs]
