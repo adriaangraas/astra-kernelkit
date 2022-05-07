@@ -40,9 +40,12 @@ from tqdm import tqdm
 from astrapy.geom import Geometry
 
 
-def _ramlak_filter(num, xp=cp):
-    """
+def _filter(num, filter_name="ramlak", xp=cp):
+    """Filter in Fourier domain
     https://gray.mgh.harvard.edu/attachments/article/166/166_HST_S14_lect1_v2.pdf
+
+    This function is a modification of the scikit-image project.
+    https://github.com/scikit-image/scikit-image/blob/main/skimage/transform/radon_transform.py
 
     It is better to build the Ram-Lak (ramp) filter in the spatial
     domain, rather than in the Fourier domain. This prevents to some extent
@@ -52,26 +55,33 @@ def _ramlak_filter(num, xp=cp):
     See Kak & Slaney, Chapter 3.
     """
     assert num % 2 == 0, "Filter must be even."
-
-    # rest of this function is modified from scikit-image project
     n1 = xp.arange(0, num / 2 + 1, dtype=xp.int)
     n2 = xp.arange(num / 2 - 1, 0, -1, dtype=xp.int)
     n = xp.concatenate((n1, n2))
-
     g = xp.zeros(len(n))
     g[0] = 0.25
     g[1::2] = -1 / (xp.pi * n[1::2])**2
-    return 4 * xp.real(xp.fft.fft(g))
+    four_filter = 4 * xp.real(xp.fft.fft(g))
+    if filter_name == "ramp" or filter_name == "ramlak":
+        pass
+    elif filter_name == "cosine":
+        freq = xp.linspace(0, xp.pi, num, endpoint=False)
+        cosine_filter = xp.fft.fftshift(xp.sin(freq))
+        four_filter *= cosine_filter
+    else:
+        raise ValueError(f"Filter with `filter_name` {filter_name} unknown.")
+    return four_filter
 
 
 def filter(projections, verbose=False, filter='ramlak'):
     if filter == 'ramlak_fourier':
+        # TODO(Adriaan): remove
         return _ramlak_filter_fourier(projections, verbose)
-    elif filter == 'ramlak':
+    else:
         xp = cp.get_array_module(projections[0])
         # this function follows structurally scikit-image's iradon()
         padding_shape = max(64, int(2 ** int(xp.ceil(xp.log2(2 * projections[0].shape[1])))))
-        ramlak = _ramlak_filter(padding_shape, xp=xp)
+        four_filt = _filter(padding_shape, filter_name=filter, xp=xp)
         p_tmp = xp.empty((projections[0].shape[0], padding_shape))
         for p in tqdm(projections, desc="Filtering", disable=not verbose):
             assert cp.get_array_module(p) == xp, (
@@ -79,11 +89,9 @@ def filter(projections, verbose=False, filter='ramlak'):
             p_tmp[...] = xp.pad(
                 p, ((0, 0), (0, padding_shape - projections[0].shape[1])),
                 mode='constant', constant_values=0)
-            f = xp.fft.fft(p_tmp) * ramlak  # complex mult
+            f = xp.fft.fft(p_tmp) * four_filt  # complex mult
             p_tmp[...] = xp.real(xp.fft.ifft(f, n=p_tmp.shape[1]))
             p[...] = p_tmp[..., :p.shape[1]]
-    else:
-        raise ValueError(f"Filter {filter} unknown.")
 
 
 def _ramlak_filter_fourier(projections, verbose=False):
