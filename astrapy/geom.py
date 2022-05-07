@@ -1,21 +1,22 @@
 import copy
-from typing import Sequence
+from dataclasses import dataclass
+from typing import List, Sequence, Tuple
 
+import cupy as cp
 import numpy as np
 import transforms3d
 
 
+@dataclass
 class Detector:
     """A baseclass for detectors without any special properties.
     Note that you can initialize detectors with or without binned pixels,
     rows and cols, there is no distinction on the software level.
     """
-
-    def __init__(self, rows, cols, pixel_width, pixel_height):
-        self.rows = rows
-        self.cols = cols
-        self.pixel_width = pixel_width
-        self.pixel_height = pixel_height
+    rows: int
+    cols: int
+    pixel_width: float
+    pixel_height: float
 
     @property
     def width(self):
@@ -30,79 +31,9 @@ class Detector:
         return self.pixel_width * self.pixel_height
 
 
-class Static3DGeometry:
+class Geometry:
     ANGLES_CONVENTION = "sxyz"
 
-    def __init__(self,
-                 tube_pos: np.ndarray,
-                 det_pos: np.ndarray,
-                 det_roll: float,
-                 det_pitch: float,
-                 det_yaw: float,
-                 detector: Detector,
-                 det_piercing: Sequence = None):
-        self.tube_position = tube_pos
-        self.detector_position = det_pos
-        self.detector_piercing = det_piercing if det_piercing else det_pos
-        self.detector = detector
-        self.__det_roll = det_roll
-        self.__det_pitch = det_pitch
-        self.__det_yaw = det_yaw
-
-    @property
-    def detector_extent_min(self):
-        return (self.detector_position
-                - self.v * self.detector.height / 2
-                - self.u * self.detector.width / 2)
-
-    @property
-    def detector_roll(self):
-        return self.__det_roll
-
-    @property
-    def detector_pitch(self):
-        return self.__det_pitch
-
-    @property
-    def detector_yaw(self):
-        return self.__det_yaw
-
-    @property
-    def u(self):
-        """Horizontal u-vector in the detector frame."""
-        R = Static3DGeometry.angles2mat(self.__det_roll,
-                                        self.__det_pitch,
-                                        self.__det_yaw)
-        return R @ [0, 1, 0]
-
-    @property
-    def v(self):
-        """Vertical v-vector in the detector frame."""
-        R = Static3DGeometry.angles2mat(self.__det_roll,
-                                        self.__det_pitch,
-                                        self.__det_yaw)
-        return R @ [0, 0, 1]
-
-    @staticmethod
-    def angles2mat(r, p, y) -> np.ndarray:
-        return transforms3d.euler.euler2mat(
-            r, p, y,
-            Static3DGeometry.ANGLES_CONVENTION
-        )
-
-    @staticmethod
-    def mat2angles(mat) -> tuple:
-        return transforms3d.euler.mat2euler(
-            mat,
-            Static3DGeometry.ANGLES_CONVENTION
-        )
-
-    def __str__(self):
-        return f"Tube {self.tube_position} " + \
-               f"Detector {self.detector_position}"
-
-
-class Geometry(Static3DGeometry):
     def __init__(self,
                  tube_pos: Sequence,
                  det_pos: Sequence,
@@ -110,7 +41,6 @@ class Geometry(Static3DGeometry):
                  v_unit: Sequence,
                  detector,
                  det_piercing=None):
-        # TODO(Adriaan): unify __init__ or the classes
         self.tube_position = np.array(tube_pos)
         self.detector_position = np.array(det_pos)
         # TODO(Adriaan): detector piercing is only useful for cone?
@@ -120,6 +50,51 @@ class Geometry(Static3DGeometry):
         self.v = np.array(v_unit)
 
     @property
+    def detector_extent_min(self):
+        return (self.detector_position
+                - self.v * self.detector.height / 2
+                - self.u * self.detector.width / 2)
+
+    # @property
+    # def detector_roll(self):
+    #     return self.__det_roll
+    #
+    # @property
+    # def detector_pitch(self):
+    #     return self.__det_pitch
+    #
+    # @property
+    # def detector_yaw(self):
+    #     return self.__det_yaw
+    #
+    # @property
+    # def u(self):
+    #     """Horizontal u-vector in the detector frame."""
+    #     R = Static3DGeometry.angles2mat(self.__det_roll,
+    #                                     self.__det_pitch,
+    #                                     self.__det_yaw)
+    #     return R @ [0, 1, 0]
+    #
+    # @property
+    # def v(self):
+    #     """Vertical v-vector in the detector frame."""
+    #     R = Static3DGeometry.angles2mat(self.__det_roll,
+    #                                     self.__det_pitch,
+    #                                     self.__det_yaw)
+    #     return R @ [0, 0, 1]
+
+
+    @staticmethod
+    def angles2mat(r, p, y) -> np.ndarray:
+        return transforms3d.euler.euler2mat(
+            r, p, y, Geometry.ANGLES_CONVENTION)
+
+    @staticmethod
+    def mat2angles(mat) -> float:
+        return transforms3d.euler.mat2euler(
+            mat, Geometry.ANGLES_CONVENTION)
+
+    @property
     def u(self):
         return self.__u
 
@@ -127,7 +102,6 @@ class Geometry(Static3DGeometry):
     def u(self, value):
         if not np.allclose(np.linalg.norm(value), 1.):
             raise ValueError("`u` must be a unit vector.")
-
         self.__u = value
 
     @property
@@ -138,7 +112,6 @@ class Geometry(Static3DGeometry):
     def v(self, value):
         if not np.allclose(np.linalg.norm(value), 1.):
             raise ValueError("`v` must be a unit vector.")
-
         self.__v = value
 
     def __str__(self):
@@ -148,12 +121,110 @@ class Geometry(Static3DGeometry):
                f"V {self.v}"
 
 
-def shift(geom: Static3DGeometry, shift_vector: np.ndarray):
+@dataclass
+class GeometrySequence:
+    """Structure-of-arrays geometry data object"""
+
+    @dataclass
+    class DetectorSequence:
+        rows: cp.ndarray
+        cols: cp.ndarray
+        pixel_width: cp.ndarray
+        pixel_height: cp.ndarray
+
+        @property
+        def height(self):
+            return self.pixel_height * self.rows
+
+        @property
+        def width(self):
+            return self.pixel_width * self.cols
+
+        @property
+        def pixel_volume(self):
+            return self.pixel_width * self.pixel_height
+
+    tube_position: cp.ndarray
+    detector_position: cp.ndarray
+    u: cp.ndarray
+    v: cp.ndarray
+    detector: DetectorSequence
+
+    def __len__(self):
+        return len(self.tube_position)
+
+    @property
+    def detector_extent_min(self):
+        return (self.detector_position
+                - self.v * self.detector.height[..., cp.newaxis] / 2
+                - self.u * self.detector.width[..., cp.newaxis] / 2)
+
+    @classmethod
+    def fromList(cls, geometries: List[Geometry]):
+        _cvrt = lambda arr: cp.ascontiguousarray(
+            cp.array(arr, dtype=np.float32))
+
+        ds = cls.DetectorSequence(
+            rows=_cvrt([g.detector.rows for g in geometries]),
+            cols=_cvrt([g.detector.cols for g in geometries]),
+            pixel_width=_cvrt([g.detector.pixel_width for g in geometries]),
+            pixel_height=_cvrt([g.detector.pixel_height for g in geometries]))
+        gs = cls(
+            tube_position=_cvrt([g.tube_position for g in geometries]),
+            detector_position=_cvrt([g.detector_position for g in geometries]),
+            u=_cvrt([g.u for g in geometries]),
+            v=_cvrt([g.v for g in geometries]),
+            detector=ds)
+        return gs
+
+    def take(self, indices):
+        ds = self.DetectorSequence(
+            rows=self.detector.rows[indices],
+            cols=self.detector.cols[indices],
+            pixel_width=self.detector.pixel_width[indices],
+            pixel_height=self.detector.pixel_height[indices]
+        )
+        gs = GeometrySequence(
+            tube_position=self.tube_position[indices],
+            detector_position=self.detector_position[indices],
+            u=self.u[indices],
+            v=self.v[indices],
+            detector=ds)
+        return gs
+
+    def __getitem__(self, item):
+        return self.take(item)
+
+
+def normalize_geoms_(
+    geometries: GeometrySequence,
+    volume_extent_min: Sequence,
+    volume_extent_max: Sequence,
+    volume_voxel_size: Sequence,
+    volume_rotation: Sequence = (0., 0., 0.),
+    xp=cp
+):
+    shift_(geometries,
+           -(xp.array(volume_extent_min) + xp.array(volume_extent_max)) / 2)
+    scale_(geometries,
+           xp.array(volume_voxel_size))
+    rotate_(geometries, *volume_rotation)
+
+
+def shift(geom, shift_vector):
+    geom = copy.deepcopy(geom)
+    geom.tube_position += shift_vector
+    geom.detector_position += shift_vector
+    return geom
+
+
+def shift_(geom, shift_vector: np.ndarray):
     geom.tube_position += shift_vector
     geom.detector_position += shift_vector
 
 
-def scale(geom: Static3DGeometry, scaling: np.ndarray):
+def scale(geom, scaling: np.ndarray):
+    geom = copy.deepcopy(geom)
     # detector pixels have to be scaled first, because
     # detector.width and detector.height need to be scaled accordingly
     horiz_pixel_vector = (geom.u * geom.detector.pixel_width) / scaling
@@ -170,26 +241,47 @@ def scale(geom: Static3DGeometry, scaling: np.ndarray):
 
     geom.tube_position[:] = geom.tube_position[:] / scaling
     geom.detector_position[:] = geom.detector_position[:] / scaling
-
-
-def rotate_inplace(geom: Static3DGeometry,
-                   roll: float = 0., pitch: float = 0., yaw: float = 0.):
-    RT = Static3DGeometry.angles2mat(roll, pitch, yaw).T
-    geom.tube_position = RT @ geom.tube_position
-    geom.detector_position = RT @ geom.detector_position
-    geom.u = RT @ geom.u
-    geom.v = RT @ geom.v
-
-
-def rotate(geom: Static3DGeometry,
-           roll: float = 0., pitch: float = 0., yaw: float = 0.):
-    geom = copy.deepcopy(geom)
-    RT = Static3DGeometry.angles2mat(roll, pitch, yaw).T
-    geom.tube_position = RT @ geom.tube_position
-    geom.detector_position = RT @ geom.detector_position
-    geom.u = RT @ geom.u
-    geom.v = RT @ geom.v
     return geom
+
+
+def scale_(geom, scaling):
+    # detector pixels have to be scaled first, because
+    # detector.width and detector.height need to be scaled accordingly
+    xp = cp.get_array_module(geom.u)
+    horiz_pixel_vector = geom.u * xp.array(geom.detector.pixel_width)[..., xp.newaxis]  # still f32
+    horiz_pixel_vector /= scaling  # keeps dtype
+    geom.detector.pixel_width = xp.linalg.norm(horiz_pixel_vector, axis=-1)
+    geom.u = horiz_pixel_vector / geom.detector.pixel_width[..., xp.newaxis]
+
+    vert_pixel_vector = geom.v * xp.array(geom.detector.pixel_height)[..., xp.newaxis]
+    vert_pixel_vector /= scaling
+    geom.detector.pixel_height = xp.linalg.norm(vert_pixel_vector, axis=-1)
+    geom.v = vert_pixel_vector / geom.detector.pixel_height[..., xp.newaxis]
+
+    geom.tube_position[:] = geom.tube_position[:] / scaling
+    geom.detector_position[:] = geom.detector_position[:] / scaling
+
+
+def rotate(geom,
+           roll: float = 0., pitch: float = 0., yaw: float = 0.):
+    ngeom = copy.deepcopy(geom)
+    RT = Geometry.angles2mat(roll, pitch, yaw).T
+    ngeom.tube_position = RT @ geom.tube_position
+    ngeom.detector_position = RT @ geom.detector_position
+    ngeom.u = RT @ geom.u
+    ngeom.v = RT @ geom.v
+    return ngeom
+
+
+def rotate_(geom,
+            roll: float = 0., pitch: float = 0., yaw: float = 0.):
+    xp = cp.get_array_module(geom.tube_position)
+    dtype = geom.tube_position.dtype
+    R = xp.asarray(Geometry.angles2mat(roll, pitch, yaw), dtype=dtype)
+    geom.tube_position = geom.tube_position @ R
+    geom.detector_position = geom.detector_position @ R
+    geom.u = geom.u @ R
+    geom.v = geom.v @ R
 
 
 def plot(geoms: dict):
