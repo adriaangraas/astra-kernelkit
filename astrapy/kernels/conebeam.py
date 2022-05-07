@@ -1,4 +1,6 @@
-from typing import Any, Sized
+from functools import lru_cache
+from math import ceil
+from typing import Any, Sequence, Sized
 
 from astrapy.data import *
 from astrapy.geom import *
@@ -6,18 +8,8 @@ from astrapy.kernel import *
 from astrapy.kernel import (_copy_to_symbol, _cuda_float4, _texture_shape)
 
 
-def _normalize_geom(geometry: Geometry,
-                    volume_extent_min: Sequence,
-                    volume_extent_max: Sequence,
-                    volume_voxel_size: Sequence,
-                    volume_rotation: Sequence = (0., 0., 0.)):
-    shift(geometry, -(np.array(volume_extent_min) + volume_extent_max) / 2)
-    scale(geometry, np.array(volume_voxel_size))
-    rotate_inplace(geometry, *volume_rotation)
-
-
 class ConeProjection(Kernel):
-    SLICES_PER_THREAD = 4
+    SLICES_PER_THREAD = 8
     COLS_PER_THREAD = 32
     ROWS_PER_BLOCK = 32
 
@@ -29,7 +21,7 @@ class ConeProjection(Kernel):
         volume_texture: txt.TextureObject,
         volume_extent_min: Sequence,
         volume_extent_max: Sequence,
-        geometries: list,
+        geometries: Sequence,
         projections: Sized,
         volume_rotation: Sequence = (0., 0., 0.),
         rays_per_pixel: int = 1
@@ -50,6 +42,10 @@ class ConeProjection(Kernel):
         and runs a thread for each combination (pixel-u, projection-angle).
         Then that thread loops through a number on pixels in the row.
         """
+        if isinstance(geometries, list):
+            geometries = GeometrySequence.fromList(geometries)
+        else:
+            geometries = copy.deepcopy(geometries)
 
         # TODO(Adriaan): explicitly formalize that multiple detectors is
         #   problematic atm. Maybe consider more advanced geometries where
@@ -59,21 +55,19 @@ class ConeProjection(Kernel):
         #   less rows and columns, the computation is silently doing
         #   something that is similar to supersampling.
         assert len(projections) == len(geometries)
-        assert np.all([g.detector.rows == geometries[0].detector.rows
-                       for g in geometries])
-        assert np.all([g.detector.cols == geometries[0].detector.cols
-                       for g in geometries])
-        rows = geometries[0].detector.rows
-        cols = geometries[0].detector.cols
-
-        for proj, geom in zip(projections, geometries):
+        assert cp.all(
+            geometries.detector.rows == geometries.detector.rows[0])
+        assert cp.all(
+            geometries.detector.cols == geometries.detector.cols[0])
+        for proj, rows, cols in zip(projections, geometries.detector.rows,
+                                    geometries.detector.cols):
             if not isinstance(proj, cp.ndarray):
                 raise TypeError("`projections` must be a CuPy ndarray.")
             if proj.dtype not in self.SUPPORTED_DTYPES:
                 raise NotImplementedError(
                     f"Currently there is only support for "
                     f"dtype={self.SUPPORTED_DTYPES}.")
-            if proj.shape != (geom.detector.rows, geom.detector.cols):
+            if proj.shape != (rows, cols):
                 raise ValueError("Projection shapes need to "
                                  "match detector (rows, cols).")
 
@@ -88,30 +82,27 @@ class ConeProjection(Kernel):
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
 
-        vox_size = voxel_size(volume_shape, volume_extent_min,
-                              volume_extent_max)
-
         proj_ptrs = [p.data.ptr for p in projections]
         assert len(proj_ptrs) == len(set(proj_ptrs)), (
             "All projection files need to reside in own memory.")
 
-        norm_geoms = copy.deepcopy(geometries)
-        for g in norm_geoms:
-            _normalize_geom(g, volume_extent_min, volume_extent_max, vox_size,
-                            volume_rotation)
-
+        vox_size = voxel_size(volume_shape, volume_extent_min,
+                              volume_extent_max)
+        normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
+                         vox_size, volume_rotation)
         names = ['cone_fp<DIR_X>', 'cone_fp<DIR_Y>', 'cone_fp<DIR_Z>']
         module = self._compile(
             names=names,
             template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
                              'cols_per_thread': self.COLS_PER_THREAD,
-                             'nr_projs_global': len(norm_geoms)})
+                             'nr_projs_global': len(geometries)})
         funcs = [module.get_function(n) for n in names]
-        self._upload_geometries(norm_geoms, module)
-
+        self._upload_geometries(geometries, module)
         output_scale = self._output_scale(vox_size)
-        blocks_u = int(np.ceil(cols / self.COLS_PER_THREAD))
-        blocks_v = int(np.ceil(rows / self.ROWS_PER_BLOCK))
+        rows = int(geometries.detector.rows[0])
+        cols = int(geometries.detector.cols[0])
+        blocks_u = ceil(cols / self.COLS_PER_THREAD)
+        blocks_v = ceil(rows / self.ROWS_PER_BLOCK)
 
         def _launch(start: int, stop: int, axis: int):
             # print(f"Launching {start}-{stop}, axis {axis}")
@@ -128,26 +119,24 @@ class ConeProjection(Kernel):
                      rows, cols,
                      *cp.float32(output_scale[axis])))
 
-        def ray_direction_ax(g) -> int:
-            d = np.abs(g.tube_position - g.detector_position)
-            return np.argmax(d)  # noqa
+        # directions of ray for each projection (a number: 0, 1, 2)
+        geom_axis = cp.argmax(cp.abs(
+            geometries.tube_position - geometries.detector_position),
+            axis=1, dtype=cp.int).get()
 
         # Run over all angles, grouping them into groups of the same
         # orientation (roughly horizontal vs. roughly vertical).
         # Start a stream of grids for each such group.
         # TODO(Adriaan): sort and launch?
         start = 0
-        prev_ax = ray_direction_ax(norm_geoms[start])
-        for i, g in enumerate(norm_geoms):
+        for i in range(len(geometries)):
             # if direction changed: launch kernel for this batch
-            _ax = ray_direction_ax(g)
-            if _ax != prev_ax:
-                _launch(start, i, prev_ax)
+            if geom_axis[i] != geom_axis[start]:
+                _launch(start, i, geom_axis[start])
                 start = i
-                prev_ax = _ax
 
         # launch kernel for remaining projections
-        _launch(start, len(norm_geoms), prev_ax)
+        _launch(start, len(geometries), geom_axis[start])
 
     @staticmethod
     def _output_scale(voxel_size: np.ndarray) -> list:
@@ -165,27 +154,25 @@ class ConeProjection(Kernel):
         return output_scale
 
     @staticmethod
-    def _upload_geometries(geometries: list, module: RawModule):
+    def _upload_geometries(geometries: GeometrySequence, module: cp.RawModule):
         """Transfer geometries to device as structure of arrays."""
         # TODO(Adriaan): maybe make a mapping between variables
-        srcsX = np.array([g.tube_position[0] for g in geometries])
-        srcsY = np.array([g.tube_position[1] for g in geometries])
-        srcsZ = np.array([g.tube_position[2] for g in geometries])
-        detsSX = np.array([g.detector_extent_min[0] for g in geometries])
-        detsSY = np.array([g.detector_extent_min[1] for g in geometries])
-        detsSZ = np.array([g.detector_extent_min[2] for g in geometries])
-        dUX = np.array([g.u[0] * g.detector.pixel_width for g in geometries])
-        dUY = np.array([g.u[1] * g.detector.pixel_width for g in geometries])
-        dUZ = np.array([g.u[2] * g.detector.pixel_width for g in geometries])
-        dVX = np.array([g.v[0] * g.detector.pixel_height for g in geometries])
-        dVY = np.array([g.v[1] * g.detector.pixel_height for g in geometries])
-        dVZ = np.array([g.v[2] * g.detector.pixel_height for g in geometries])
-        _copy_to_symbol(module, 'detsSX', detsSX)
-        _copy_to_symbol(module, 'detsSY', detsSY)
-        _copy_to_symbol(module, 'detsSZ', detsSZ)
+        src = cp.ascontiguousarray(geometries.tube_position.T)
+        ext_min = cp.ascontiguousarray(geometries.detector_extent_min.T)
+        u = cp.ascontiguousarray(
+            geometries.u.T * geometries.detector.pixel_width)
+        v = cp.ascontiguousarray(
+            geometries.v.T * geometries.detector.pixel_height)
+        srcsX, srcsY, srcsZ = src[0], src[1], src[2]
+        detsSX, detsSY, detsSZ = ext_min[0], ext_min[1], ext_min[2]
+        dUX, dUY, dUZ = u[0], u[1], u[2]
+        dVX, dVY, dVZ = v[0], v[1], v[2]
         _copy_to_symbol(module, 'srcsX', srcsX)
         _copy_to_symbol(module, 'srcsY', srcsY)
         _copy_to_symbol(module, 'srcsZ', srcsZ)
+        _copy_to_symbol(module, 'detsSX', detsSX)
+        _copy_to_symbol(module, 'detsSY', detsSY)
+        _copy_to_symbol(module, 'detsSZ', detsSZ)
         _copy_to_symbol(module, 'detsUX', dUX)
         _copy_to_symbol(module, 'detsUY', dUY)
         _copy_to_symbol(module, 'detsUZ', dUZ)
@@ -205,7 +192,7 @@ class ConeBackprojection(Kernel):
 
     def __call__(self,
                  projections_textures: Any,
-                 geometries: list,
+                 geometries: Sequence,
                  volume: cp.ndarray,
                  volume_extent_min: Sequence,
                  volume_extent_max: Sequence,
@@ -220,6 +207,10 @@ class ConeBackprojection(Kernel):
             of pointers to 2D texture objects (one for each projection), and
             accesses the textures by a list of pointers.
         """
+        if isinstance(geometries, list):
+            geometries = GeometrySequence.fromList(geometries)
+        else:
+            geometries = copy.deepcopy(geometries)
         if isinstance(volume, cp.ndarray):
             if volume.dtype not in self.SUPPORTED_DTYPES:
                 raise NotImplementedError(
@@ -237,18 +228,20 @@ class ConeBackprojection(Kernel):
                 f"voxels yet.")
 
         if isinstance(projections_textures, list):
-            for p, g in zip(projections_textures, geometries):
-                if not _texture_shape(p) == (g.detector.rows, g.detector.cols):
+            for i, p in enumerate(projections_textures):
+                if (not _texture_shape(p) ==
+                        (geometries.detector.rows[i],
+                         geometries.detector.cols[i])):
                     raise ValueError("Projection texture resource needs to"
                                      " match the detector dimensions in the"
                                      " geometries.")
-
             compile_use_texture3D = False
             projections = cp.array([p.ptr for p in projections_textures])
         elif isinstance(projections_textures, txt.TextureObject):
-            assert np.all([g.detector.rows == geometries[0].detector.rows
-                           and g.detector.cols == geometries[0].detector.cols
-                           for g in geometries])
+            assert cp.all(
+                geometries.detector.rows == geometries.detector.rows[0])
+            assert cp.all(
+                geometries.detector.cols == geometries.detector.cols[0])
             compile_use_texture3D = True
             projections = projections_textures
         else:
@@ -271,17 +264,16 @@ class ConeBackprojection(Kernel):
                              'texture3D': compile_use_texture3D})
         cone_bp = module.get_function("cone_bp")
 
-        params = []  # precomputed kernel parameters
-        for g in copy.deepcopy(geometries):
-            _normalize_geom(
-                g, volume_extent_min, volume_extent_max,
-                vox_size, volume_rotation)
-            nU, nV, d = self._geom2params(g, vox_size, False)  # TODO
-            # TODO(Adriaan): better to have SoA instead AoS?
-            params.extend([*nU.to_list(), *nV.to_list(), *d.to_list()])
-        _copy_to_symbol(module, 'params', np.array(params).astype(np.float))
-        blocks = np.ceil(
-            np.asarray(volume.shape) / self.VOL_BLOCK).astype(np.int)
+        normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
+                         vox_size, volume_rotation)
+        nU, nV, d = self._geoms2params(geometries, vox_size, False)
+        params = cp.array(
+            nU.to_list() + nV.to_list() + d.to_list()).T.flatten()
+        _copy_to_symbol(module, 'params', params)
+
+        # TODO(Adriaan): better to have SoA instead AoS?
+        blocks = np.ceil(np.asarray(volume.shape) / self.VOL_BLOCK).astype(
+            np.int)
         for start in range(0, len(geometries), self.LIMIT_PROJS_PER_BLOCK):
             cone_bp((blocks[0] * blocks[1], blocks[2]),
                     (self.VOL_BLOCK[0], self.VOL_BLOCK[1]),
@@ -293,9 +285,10 @@ class ConeBackprojection(Kernel):
                      cp.float32(vox_volume)))
 
     @staticmethod
-    def _geom2params(geom: Geometry,
-                     voxel_size: Sequence,
-                     fdk_weighting: bool = False):
+    def _geoms2params(geom: GeometrySequence,
+                      voxel_size: Sequence,
+                      fdk_weighting: bool = False,
+                      xp=cp):
         """Precomputed kernel parameters
 
         We need three things in the kernel:
@@ -320,41 +313,42 @@ class ConeBackprojection(Kernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
-        u = geom.u * geom.detector.pixel_width
-        v = geom.v * geom.detector.pixel_height
+        u = geom.u * geom.detector.pixel_width[..., xp.newaxis]
+        v = geom.v * geom.detector.pixel_height[..., xp.newaxis]
         s = geom.tube_position
         d = geom.detector_extent_min
 
         # NB(ASTRA): for cross(u,v) we invert the volume scaling (for the voxel
         # size normalization) to get the proper dimensions for
         # the scaling of the adjoint
-        cr = np.cross(u, v) * [voxel_size[1] * voxel_size[2],
-                               voxel_size[0] * voxel_size[2],
-                               voxel_size[0] * voxel_size[1]]
-        assert np.linalg.det([u, v, s - d]) != 0.
-        scale = np.sqrt(np.linalg.norm(cr)) / np.linalg.det([u, v, d - s])
+        cr = xp.cross(u, v)  # maintain f32
+        cr *= xp.array([voxel_size[1] * voxel_size[2],
+                        voxel_size[0] * voxel_size[2],
+                        voxel_size[0] * voxel_size[1]])
+        scale = (xp.sqrt(xp.linalg.norm(cr, axis=1)) /
+                 cp.linalg.det(cp.array((u, v, d - s)).swapaxes(0, 1)))
 
         # TODO(Adriaan): it looks like my preweighting is different to ASTRA's
         #   and I always require voxel-volumetric scaling instead of below
         # if fdk_weighting:
         #     scale = 1. / np.linalg.det([u, v, s])
 
-        _det3x = lambda b, c: b[1] * c[2] - b[2] * c[1]
-        _det3y = lambda b, c: -(b[0] * c[2] - b[2] * c[0])
-        _det3z = lambda b, c: b[0] * c[1] - b[1] * c[0]
+        _det3x = lambda b, c: b[:, 1] * c[:, 2] - b[:, 2] * c[:, 1]
+        _det3y = lambda b, c: -(b[:, 0] * c[:, 2] - b[:, 2] * c[:, 0])
+        _det3z = lambda b, c: b[:, 0] * c[:, 1] - b[:, 1] * c[:, 0]
 
         numerator_u = _cuda_float4(
-            w=scale * np.linalg.det([s, v, d]),
+            w=scale * xp.linalg.det(xp.array((s, v, d)).swapaxes(0, 1)),
             x=scale * _det3x(v, s - d),
             y=scale * _det3y(v, s - d),
             z=scale * _det3z(v, s - d))
         numerator_v = _cuda_float4(
-            w=-scale * np.linalg.det([s, u, d]),
+            w=-scale * xp.linalg.det(xp.array((s, u, d)).swapaxes(0, 1)),
             x=-scale * _det3x(u, s - d),
             y=-scale * _det3y(u, s - d),
             z=-scale * _det3z(u, s - d))
         denominator = _cuda_float4(
-            w=scale * np.linalg.det([u, v, s]),
+            w=scale * xp.linalg.det(xp.array((u, v, s)).swapaxes(0, 1)),
             x=-scale * _det3x(u, v),
             y=-scale * _det3y(u, v),
             z=-scale * _det3z(u, v))
