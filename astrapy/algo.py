@@ -328,6 +328,8 @@ def _conebackprojection(
                 stream.synchronize()
                 yield out
     else:
+        assert chunk_size is None, ("All `projections` are on the GPU, "
+                                    "no `chunk_size` needed.")
         projections = cp.asarray(projections)
         projs_txt = _preproc_to_texture(projections, geometries)
         _compute(projs_txt, geometries)
@@ -561,7 +563,7 @@ class _A:
 class _A_T:
     def __init__(self, bpkern: ConeBackprojection,
                  vol_ext_min, vol_ext_max, geometry,
-                 out_shape, chunk_size, xp_out=cp, dtype=cp.float32,
+                 out_shape, chunk_size=None, xp_out=cp, dtype=cp.float32,
                  verbose=False):
         self.bpk = bpkern
         self.vol_ext_min = vol_ext_min
