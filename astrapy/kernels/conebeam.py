@@ -1,30 +1,48 @@
-from functools import lru_cache
 from math import ceil
 from typing import Any, Sequence, Sized
 
+from cupy.cuda.texture import TextureObject
+
 from astrapy.data import *
 from astrapy.geom import *
-from astrapy.kernel import *
-from astrapy.kernel import (_copy_to_symbol, _cuda_float4, _texture_shape)
+from astrapy.kernel import (_copy_to_symbol, _cuda_float4, _texture_shape, Kernel)
 
 
 class ConeProjection(Kernel):
-    SLICES_PER_THREAD = 8
-    COLS_PER_THREAD = 32
-    ROWS_PER_BLOCK = 32
+    SLICES_PER_THREAD = 16
+    COLS_PER_THREAD = 1024
+    ROWS_PER_BLOCK = 4
+    _NAMES = ('cone_fp<DIR_X>', 'cone_fp<DIR_Y>', 'cone_fp<DIR_Z>')
 
-    def __init__(self, *args):
+    def __init__(self,
+                 slices_per_thread: int = None,
+                 cols_per_thread: int = None,
+                 rows_per_block: int = None,
+                 *args):
+        self._slices_per_thread = (slices_per_thread if slices_per_thread is not None
+                                   else self.SLICES_PER_THREAD)
+        self._cols_per_thread = (cols_per_thread if cols_per_thread is not None
+                                 else self.COLS_PER_THREAD)
+        self._rows_per_block = (rows_per_block if rows_per_block is not None
+                                else self.ROWS_PER_BLOCK)
         super().__init__('cone_fp.cu', *args)
 
+    def compile(self, nr_projs):
+        return self._compile(
+            names=self._NAMES,
+            template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
+                             'cols_per_thread': self.COLS_PER_THREAD,
+                             'nr_projs_global': nr_projs})
+
     def __call__(
-        self,
-        volume_texture: txt.TextureObject,
-        volume_extent_min: Sequence,
-        volume_extent_max: Sequence,
-        geometries: Sequence,
-        projections: Sized,
-        volume_rotation: Sequence = (0., 0., 0.),
-        rays_per_pixel: int = 1
+            self,
+            volume_texture: TextureObject,
+            volume_extent_min: Sequence,
+            volume_extent_max: Sequence,
+            geometries: Sequence,
+            projections: Sized,
+            volume_rotation: Sequence = (0., 0., 0.),
+            rays_per_pixel: int = 1
     ):
         """Forward projection with conebeam geometry.
 
@@ -77,7 +95,7 @@ class ConeProjection(Kernel):
 
         volume_shape = _texture_shape(volume_texture)
         if not has_isotropic_voxels(
-            volume_shape, volume_extent_min, volume_extent_max):
+                volume_shape, volume_extent_min, volume_extent_max):
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
@@ -85,34 +103,31 @@ class ConeProjection(Kernel):
         proj_ptrs = [p.data.ptr for p in projections]
         assert len(proj_ptrs) == len(set(proj_ptrs)), (
             "All projection files need to reside in own memory.")
+        proj_ptrs = cp.array(proj_ptrs)
 
         vox_size = voxel_size(volume_shape, volume_extent_min,
                               volume_extent_max)
         normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
                          vox_size, volume_rotation)
-        names = ['cone_fp<DIR_X>', 'cone_fp<DIR_Y>', 'cone_fp<DIR_Z>']
-        module = self._compile(
-            names=names,
-            template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
-                             'cols_per_thread': self.COLS_PER_THREAD,
-                             'nr_projs_global': len(geometries)})
-        funcs = [module.get_function(n) for n in names]
+
+        module = self.compile(len(geometries))
+        funcs = [module.get_function(n) for n in self._NAMES]
         self._upload_geometries(geometries, module)
         output_scale = self._output_scale(vox_size)
         rows = int(geometries.detector.rows[0])
         cols = int(geometries.detector.cols[0])
-        blocks_u = ceil(cols / self.COLS_PER_THREAD)
-        blocks_v = ceil(rows / self.ROWS_PER_BLOCK)
+        blocks_u = ceil(cols / self._cols_per_thread)
+        blocks_v = ceil(rows / self._rows_per_block)
 
         def _launch(start: int, stop: int, axis: int):
             # print(f"Launching {start}-{stop}, axis {axis}")
             # slice volume in the axis of the ray direction
-            for i in range(0, volume_shape[axis], self.SLICES_PER_THREAD):
+            for i in range(0, volume_shape[axis], self._slices_per_thread):
                 funcs[axis](
                     (blocks_v, blocks_u, stop - start),
-                    (self.ROWS_PER_BLOCK,),
+                    (self._rows_per_block,),
                     (volume_texture,
-                     cp.array(proj_ptrs),
+                     proj_ptrs,
                      i,  # start slice
                      start,  # projection
                      *volume_shape,
@@ -183,12 +198,36 @@ class ConeProjection(Kernel):
 
 class ConeBackprojection(Kernel):
     # last dim is not number of threads, but volume slab thickness
-    VOL_BLOCK = (16, 32, 6)
-    LIMIT_PROJS_PER_BLOCK = 32
+    VOXELS_PER_BLOCK = (4, 32, 64)  # 7/4.5 faster than (16, 32, 6), 32 on GTX 1880 Ti
+    LIMIT_PROJS_PER_BLOCK = 64
+    MIN_LIMIT_PROJS = 1024
 
-    def __init__(self, min_limit_projs: int = 1024):
+    def __init__(self,
+                 min_limit_projs: int = None,
+                 voxels_per_block: tuple = None,
+                 limit_projs_per_block: int = None):
         super().__init__('cone_bp.cu')
-        self._min_limit_projs = min_limit_projs
+        self._min_limit_projs = (min_limit_projs if min_limit_projs is not None
+                                 else self.MIN_LIMIT_PROJS)
+        self._vox_block = (voxels_per_block if voxels_per_block is not None
+                           else self.VOXELS_PER_BLOCK)
+        self._limit_projs_per_block = (limit_projs_per_block if limit_projs_per_block is not None
+                                       else self.LIMIT_PROJS_PER_BLOCK)
+
+    def compile(self, nr_projs: int = None, use_texture_3D: bool = True) -> cp.RawModule:
+        if nr_projs is None:
+            nr_projs_global = self._min_limit_projs
+        else:
+            nr_projs_global = np.max((nr_projs, self._min_limit_projs))
+
+        return self._compile(
+            names=('cone_bp',),
+            template_kwargs={'nr_vxls_block_x': self._vox_block[0],
+                             'nr_vxls_block_y': self._vox_block[1],
+                             'nr_vxls_block_z': self._vox_block[2],
+                             'nr_projs_block': self._limit_projs_per_block,
+                             'nr_projs_global': nr_projs_global,
+                             'texture3D': use_texture_3D})
 
     def __call__(self,
                  projections_textures: Any,
@@ -222,7 +261,7 @@ class ConeBackprojection(Kernel):
             f"`{self.__class__.__name__}` is not tested without "
             f"C-contiguous data.")
         if not has_isotropic_voxels(
-            volume.shape, volume_extent_min, volume_extent_max):
+                volume.shape, volume_extent_min, volume_extent_max):
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
@@ -237,7 +276,7 @@ class ConeBackprojection(Kernel):
                                      " geometries.")
             compile_use_texture3D = False
             projections = cp.array([p.ptr for p in projections_textures])
-        elif isinstance(projections_textures, txt.TextureObject):
+        elif isinstance(projections_textures, TextureObject):
             assert cp.all(
                 geometries.detector.rows == geometries.detector.rows[0])
             assert cp.all(
@@ -253,15 +292,7 @@ class ConeBackprojection(Kernel):
         vox_volume = voxel_volume(
             volume.shape, volume_extent_min, volume_extent_max)
 
-        lim_projs = np.max((len(geometries), self._min_limit_projs))
-        module = self._compile(
-            names=('cone_bp',),
-            template_kwargs={'vol_block_x': self.VOL_BLOCK[0],
-                             'vol_block_y': self.VOL_BLOCK[1],
-                             'vol_block_z': self.VOL_BLOCK[2],
-                             'nr_projs_block': self.LIMIT_PROJS_PER_BLOCK,
-                             'nr_projs_global': lim_projs,
-                             'texture3D': compile_use_texture3D})
+        module = self.compile(len(geometries), compile_use_texture3D)
         cone_bp = module.get_function("cone_bp")
 
         normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
@@ -272,11 +303,11 @@ class ConeBackprojection(Kernel):
         _copy_to_symbol(module, 'params', params)
 
         # TODO(Adriaan): better to have SoA instead AoS?
-        blocks = np.ceil(np.asarray(volume.shape) / self.VOL_BLOCK).astype(
+        blocks = np.ceil(np.asarray(volume.shape) / self._vox_block).astype(
             np.int)
         for start in range(0, len(geometries), self.LIMIT_PROJS_PER_BLOCK):
-            cone_bp((blocks[0] * blocks[1], blocks[2]),
-                    (self.VOL_BLOCK[0], self.VOL_BLOCK[1]),
+            cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
+                    (self._vox_block[0], self._vox_block[1]),  # threads
                     (projections,
                      volume,
                      start,

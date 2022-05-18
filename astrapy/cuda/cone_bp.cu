@@ -24,9 +24,9 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 -----------------------------------------------------------------------
 */
-static const unsigned int volBlockX = {{ vol_block_x }};
-static const unsigned int volBlockY = {{ vol_block_y }};
-static const unsigned int volBlockZ = {{ vol_block_z }};
+static const unsigned int volBlockX = {{ nr_vxls_block_x }};
+static const unsigned int volBlockY = {{ nr_vxls_block_y }};
+static const unsigned int volBlockZ = {{ nr_vxls_block_z }};
 
 struct Params {
 	float4 numeratorU;
@@ -70,8 +70,8 @@ void cone_bp(
 	const float fZ = startZ - .5f * voxelsZ + .5f;
 
     // init Z to zero
-	float Z[{{ vol_block_z }}];
-	for (int i = 0; i < {{ vol_block_z }}; ++i)
+	float Z[{{ nr_vxls_block_z }}];
+	for (int i = 0; i < {{ nr_vxls_block_z }}; ++i)
 		Z[i] = .0f;
 
     // scope hints the compiler to clean up variables?
@@ -86,7 +86,7 @@ void cone_bp(
 			float den  = d.w  + fX * d.x  + fY * d.y  + fZ * d.z;
 
 			float r, U, V;
-			for (int i = 0; i < {{ vol_block_z }}; ++i) {
+			for (int i = 0; i < {{ nr_vxls_block_z }}; ++i) {
 				r = __fdividef(1.f, den);
 				U = numU * r;
 				V = numV * r;
@@ -105,7 +105,7 @@ void cone_bp(
 	}
 
     // make sure to write inside volume
-	int endZ = {{ vol_block_z }};
+	int endZ = {{ nr_vxls_block_z }};
 	if (endZ > voxelsZ - startZ)
 		endZ = voxelsZ - startZ;
 
