@@ -107,11 +107,12 @@ def vol_params(
                     " and min value, or inferred automatically.")
 
         if inferred:
-            print("Computed volume parameters: ")
-            print(f" - shape: {shp}")
-            print(f" - extent min: {ext_min}")
-            print(f" - extent max: {ext_max}")
-            print(f" - voxel size: {vox_sz}")
+            if verbose:
+                print("Computed volume parameters: ")
+                print(f" - shape: {shp}")
+                print(f" - extent min: {ext_min}")
+                print(f" - extent max: {ext_max}")
+                print(f" - voxel size: {vox_sz}")
 
             return (n, xmin, xmax, sz)
 
@@ -208,11 +209,12 @@ def vol_params(
     if not np.all(resolved_dims):
         raise RuntimeError("Could not resolve volume and voxel dimensions.")
 
-    print("Computed volume parameters: ")
-    print(f" - shape: {shp}")
-    print(f" - extent min: {ext_min}")
-    print(f" - extent max: {ext_max}")
-    print(f" - voxel size: {vox_sz}")
+    if verbose:
+        print("Computed volume parameters: ")
+        print(f" - shape: {shp}")
+        print(f" - extent min: {ext_min}")
+        print(f" - extent max: {ext_max}")
+        print(f" - voxel size: {vox_sz}")
     return tuple(shp), tuple(ext_min), tuple(ext_max), tuple(vox_sz)
 
 
@@ -434,6 +436,7 @@ def bp(
     filter: Any = None,
     preproc_fn: Callable = None,
     return_gpu: bool = False,
+    verbose: bool = False,
     **kwargs):
     """
     Executes `kernel`
@@ -464,7 +467,7 @@ def bp(
 
     vol_shp, vol_ext_min, vol_ext_max, _ = vol_params(
         volume_shape, volume_extent_min, volume_extent_max,
-        volume_voxel_size, geometry)
+        volume_voxel_size, geometry, verbose=verbose)
 
     volume_gpu = cp.empty(vol_shp, dtype=cp.float32)
 
@@ -478,9 +481,10 @@ def bp(
         chunk_size=chunk_size,
         filter=filter,
         preproc_fn=preproc_fn,
+        verbose=verbose,
         **kwargs)
 
-    for volume_gpu in tqdm(executor):
+    for volume_gpu in tqdm(executor, disable=not verbose):
         pass
 
     if return_gpu:
