@@ -305,7 +305,7 @@ class ConeBackprojection(Kernel):
         # TODO(Adriaan): better to have SoA instead AoS?
         blocks = np.ceil(np.asarray(volume.shape) / self._vox_block).astype(
             np.int)
-        for start in range(0, len(geometries), self.LIMIT_PROJS_PER_BLOCK):
+        for start in range(0, len(geometries), self._limit_projs_per_block):
             cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
                     (self._vox_block[0], self._vox_block[1]),  # threads
                     (projections,
