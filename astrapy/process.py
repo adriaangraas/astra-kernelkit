@@ -55,8 +55,8 @@ def _filter(num, filter_name="ramlak", xp=cp):
     See Kak & Slaney, Chapter 3.
     """
     assert num % 2 == 0, "Filter must be even."
-    n1 = xp.arange(0, num / 2 + 1, dtype=xp.int)
-    n2 = xp.arange(num / 2 - 1, 0, -1, dtype=xp.int)
+    n1 = xp.arange(0, num / 2 + 1, dtype=xp.int32)
+    n2 = xp.arange(num / 2 - 1, 0, -1, dtype=xp.int32)
     n = xp.concatenate((n1, n2))
     g = xp.zeros(len(n))
     g[0] = 0.25
