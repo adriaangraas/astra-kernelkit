@@ -10,29 +10,39 @@ from astrapy.kernel import (_copy_to_symbol, _cuda_float4, _texture_shape, Kerne
 
 class ConeProjection(Kernel):
     SLICES_PER_THREAD = 16
-    COLS_PER_THREAD = 1024
-    ROWS_PER_BLOCK = 4
-    _NAMES = ('cone_fp<DIR_X>', 'cone_fp<DIR_Y>', 'cone_fp<DIR_Z>')
+    PIXELS_IN_X_BLOCK = 32
+    PIXELS_PER_Y_THREAD = 32
 
     def __init__(self,
                  slices_per_thread: int = None,
-                 cols_per_thread: int = None,
-                 rows_per_block: int = None,
+                 pixels_per_thread: int = None,
+                 pixels_in_x_block: int = None,
+                 projs_row_major: bool = True,
+                 mode_row: bool = False,
                  *args):
         self._slices_per_thread = (slices_per_thread if slices_per_thread is not None
                                    else self.SLICES_PER_THREAD)
-        self._cols_per_thread = (cols_per_thread if cols_per_thread is not None
-                                 else self.COLS_PER_THREAD)
-        self._rows_per_block = (rows_per_block if rows_per_block is not None
-                                else self.ROWS_PER_BLOCK)
+        self._pixels_per_y_thread = (pixels_per_thread if pixels_per_thread is not None
+                                 else self.PIXELS_PER_Y_THREAD)
+        self._pixels_in_x_block = (pixels_in_x_block if pixels_in_x_block is not None
+                                else self.PIXELS_IN_X_BLOCK)
+        self._projs_row_major = projs_row_major
+        self._mode_row = mode_row
         super().__init__('cone_fp.cu', *args)
+
+    def _get_names(self):
+        return (f'cone_fp<DIR_X>',
+                f'cone_fp<DIR_Y>',
+                f'cone_fp<DIR_Z>')
 
     def compile(self, nr_projs):
         return self._compile(
-            names=self._NAMES,
+            names=self._get_names(),
             template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
-                             'cols_per_thread': self.COLS_PER_THREAD,
-                             'nr_projs_global': nr_projs})
+                             'pixels_per_thread': self.PIXELS_PER_Y_THREAD,
+                             'nr_projs_global': nr_projs,
+                             'mode_row': self._mode_row,
+                             'projs_row_major': self._projs_row_major})
 
     def __call__(
             self,
@@ -85,9 +95,19 @@ class ConeProjection(Kernel):
                 raise NotImplementedError(
                     f"Currently there is only support for "
                     f"dtype={self.SUPPORTED_DTYPES}.")
-            if proj.shape != (rows, cols):
-                raise ValueError("Projection shapes need to "
-                                 "match detector (rows, cols).")
+            if self._projs_row_major:
+                if proj.shape != (rows, cols):
+                    raise ValueError("Projection shapes need to "
+                                     "match detector (rows, cols) or "
+                                     "set `proj_rows_major` to `False`.")
+            else:
+                if proj.shape != (cols, rows):
+                    raise ValueError("Projection shapes need to "
+                                     "match detector (cols, rows) or "
+                                     "set `projs_rows_major`.")
+            if not proj.flags['C_CONTIGUOUS']:
+                raise ValueError("Projection data must be C-contiguous in "
+                                 "memory.")
 
         if rays_per_pixel != 1:
             raise NotImplementedError(
@@ -111,21 +131,21 @@ class ConeProjection(Kernel):
                          vox_size, volume_rotation)
 
         module = self.compile(len(geometries))
-        funcs = [module.get_function(n) for n in self._NAMES]
+        funcs = [module.get_function(n) for n in self._get_names()]
         self._upload_geometries(geometries, module)
         output_scale = self._output_scale(vox_size)
         rows = int(geometries.detector.rows[0])
         cols = int(geometries.detector.cols[0])
-        blocks_u = ceil(cols / self._cols_per_thread)
-        blocks_v = ceil(rows / self._rows_per_block)
+        blocks_x = ceil(rows / self._pixels_in_x_block)
+        blocks_y = ceil(cols / self._pixels_per_y_thread)
 
         def _launch(start: int, stop: int, axis: int):
             # print(f"Launching {start}-{stop}, axis {axis}")
             # slice volume in the axis of the ray direction
             for i in range(0, volume_shape[axis], self._slices_per_thread):
                 funcs[axis](
-                    (blocks_v, blocks_u, stop - start),
-                    (self._rows_per_block,),
+                    (blocks_x, blocks_y, stop - start),  # grid
+                    (self._pixels_in_x_block,),  # threads
                     (volume_texture,
                      proj_ptrs,
                      i,  # start slice

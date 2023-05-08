@@ -24,8 +24,6 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 -----------------------------------------------------------------------
 */
-typedef texture<float, 3, cudaReadModeElementType> texture3D;
-
 __constant__ float srcsX[{{ nr_projs_global }}];
 __constant__ float srcsY[{{ nr_projs_global }}];
 __constant__ float srcsZ[{{ nr_projs_global }}];
@@ -41,57 +39,47 @@ __constant__ float detsVZ[{{ nr_projs_global }}];
 
 // x=0, y=1, z=2
 struct DIR_X {
-    __device__ float nSlices(unsigned int voxX,
-                             unsigned int voxY,
-                             unsigned int voxZ) const { return voxX; }
-    __device__ float nDim1(unsigned int volX,
-                           unsigned int voxY,
-                           unsigned int voxZ) const { return voxY; }
-    __device__ float nDim2(unsigned int voxX,
-                           unsigned int voxY,
-                           unsigned int voxZ) const { return voxZ; }
-    __device__ float x(float x, float y, float z) const { return x; }
-    __device__ float y(float x, float y, float z) const { return y; }
-    __device__ float z(float x, float y, float z) const { return z; }
-    __device__ float tex(texture3D vol, float f0, float f1, float f2) const {
-        return tex3D(vol, f0, f1, f2); }
+    __device__ inline static float nSlices(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
+         return voxX; }
+    __device__ inline static float nDim1(unsigned int volX, unsigned int voxY, unsigned int voxZ) {
+        return voxY; }
+    __device__ inline static float nDim2(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
+        return voxZ; }
+    __device__ inline static float x(float x, float y, float z) { return x; }
+    __device__ inline static float y(float x, float y, float z) { return y; }
+    __device__ inline static float z(float x, float y, float z) { return z; }
+    __device__ inline static float tex(const cudaTextureObject_t& vol, float f0, float f1, float f2) {
+        return tex3D<float>(vol, f0, f1, f2); }
 };
+
 // y=0, x=1, z=2
 struct DIR_Y {
-    __device__ float nSlices(unsigned int volX,
-                             unsigned int voxY,
-                             unsigned int voxZ) const { return voxY; }
-    __device__ float nDim1(unsigned int voxX,
-                           unsigned int voxY,
-                           unsigned int voxZ) const { return voxX; }
-    __device__ float nDim2(unsigned int voxX,
-                           unsigned int voxY,
-                           unsigned int voxZ) const { return voxZ; }
-    __device__ float x(float x, float y, float z) const { return y; }
-    __device__ float y(float x, float y, float z) const { return x; }
-    __device__ float z(float x, float y, float z) const { return z; }
-    __device__ float tex(texture3D vol, float f0, float f1, float f2) const {
-        return tex3D(vol, f0, f2, f1); } //  1 0 2
+    __device__ inline static float nSlices(unsigned int volX, unsigned int voxY, unsigned int voxZ) {
+        return voxY; }
+    __device__ inline static float nDim1(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
+        return voxX; }
+    __device__ inline static float nDim2(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
+        return voxZ; }
+    __device__ inline static float x(float x, float y, float z) { return y; }
+    __device__ inline static float y(float x, float y, float z) { return x; }
+    __device__ inline static float z(float x, float y, float z) { return z; }
+    __device__ inline static float tex(const cudaTextureObject_t& vol, float f0, float f1, float f2) {
+        return tex3D<float>(vol, f0, f2, f1); } //  1 0 2
 };
 
-// z=0, x=1, y=2
-struct DIR_Z {
-    __device__ float nSlices(unsigned int volX,
-                             unsigned int voxY,
-                             unsigned int voxZ) const { return voxZ; }
-    __device__ float nDim1(unsigned int voxX,
-                           unsigned int voxY,
-                           unsigned int voxZ) const { return voxX; }
-    __device__ float nDim2(unsigned int voxX,
-                           unsigned int voxY,
-                           unsigned int voxZ) const { return voxY; }
-    __device__ float x(float x, float y, float z) const { return z; }
-    __device__ float y(float x, float y, float z) const { return x; }
-    __device__ float z(float x, float y, float z) const { return y; }
-    __device__ float tex(texture3D vol, float f0, float f1, float f2) const {
-        return tex3D(vol, f2, f0, f1); }  // 1 2 0
+struct DIR_Z { // z=0, x=1, y=2
+    __device__ inline static float nSlices(unsigned int volX, unsigned int voxY, unsigned int voxZ) {
+        return voxZ; }
+    __device__ inline static float nDim1(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
+        return voxX; }
+    __device__ inline static float nDim2(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
+        return voxY; }
+    __device__ inline static float x(float x, float y, float z) { return z; }
+    __device__ inline static float y(float x, float y, float z) { return x; }
+    __device__ inline static float z(float x, float y, float z) { return y; }
+    __device__ inline static float tex(const cudaTextureObject_t& vol, float f0, float f1, float f2) {
+        return tex3D<float>(vol, f2, f0, f1); }  // 1 2 0
 };
-
 
 /**
  * Forward projection for cone geometry with flat detector
@@ -99,10 +87,13 @@ struct DIR_Z {
  *  - scaling distCorr can be slightly faster since scale1=1 and
  *    scale2=1 for volumes that scale as a cube
  *  - bring supersampling back
+ *
+ * A thread corresponds to a (row,) and computes a column portion for a geometry.
+ * A block is (number of rows, number of column portions, number of projections)
  */
-template<typename COORD>
+template<typename C>
 __global__ void cone_fp(
-    texture3D volumeTexture,
+    cudaTextureObject_t volumeTexture,
     float ** projections,
     unsigned int offsetSlice,
     unsigned int offsetProj,
@@ -115,22 +106,39 @@ __global__ void cone_fp(
     float scale2,
     float outputScale
 ) {
-    COORD c;
+    int row;
+    int col;
+    int endRow;
+    int endCol;
+    const int pixelsPerThread = {{ pixels_per_thread }};
 
-    const int row = blockIdx.x * blockDim.x + threadIdx.x;
-    if (row >= rows)
-        return;
+    {% if mode_row %}
+        row = blockIdx.x * blockDim.x + threadIdx.x;
+        if (row >= rows)
+            return;
+        endRow = row + 1;
 
-    int col = blockIdx.y * {{ cols_per_thread }};
-    int endCol = col + {{ cols_per_thread }};
-    if (endCol > cols)
-        endCol = cols;
+        col = blockIdx.y * pixelsPerThread;
+        endCol = col + pixelsPerThread;
+        if (endCol > cols)
+            endCol = cols;
+    {% else %}
+        col = blockIdx.x * blockDim.x + threadIdx.x;
+        if (col >= cols)
+            return;
+        endCol = col + 1;
+
+        row = blockIdx.y * pixelsPerThread;
+        endRow = row + pixelsPerThread;
+        if (endRow > rows)
+            endRow = rows;
+    {% endif %}
 
     const int proj = offsetProj + blockIdx.z;
 
     int endSlice = offsetSlice + {{ slices_per_thread }};
-    if (endSlice > c.nSlices(voxX, voxY, voxZ))
-        endSlice = c.nSlices(voxX, voxY, voxZ);
+    if (endSlice > C::nSlices(voxX, voxY, voxZ))
+        endSlice = C::nSlices(voxX, voxY, voxZ);
 
     const float sX = srcsX[proj];
     const float sY = srcsY[proj];
@@ -145,45 +153,48 @@ __global__ void cone_fp(
     const float dSY = detsSY[proj] + .5f * dUY + .5f * dVY;
     const float dSZ = detsSZ[proj] + .5f * dUZ + .5f * dVZ;
 
-    // Trace the ray through a slice of the volume.
-    for (; col < endCol; ++col) {
-        const float detX = dSX + col * dUX + row * dVX;
-        const float detY = dSY + col * dUY + row * dVY;
-        const float detZ = dSZ + col * dUZ + row * dVZ;
+    for (int r = row; r < endRow; ++r) {
+//        printf("row %d \n ", row);
+        for (int c = col; c < endCol; ++c) {
+            // Trace the ray through a slice of the volume.
+            const float detX = dSX + c * dUX + r * dVX;
+            const float detY = dSY + c * dUY + r * dVY;
+            const float detZ = dSZ + c * dUZ + r * dVZ;
 
-        /*        (x)   ( 1)       ( 0) *
-         * ray:   (y) = (ay) * x + (by) *
-         *        (z)   (az)       (bz) */
-        const float a1 = (c.y(sX, sY, sZ) - c.y(detX, detY, detZ)) /
-                         (c.x(sX, sY, sZ) - c.x(detX, detY, detZ));
-        const float a2 = (c.z(sX, sY, sZ) - c.z(detX, detY, detZ)) /
-                         (c.x(sX, sY, sZ) - c.x(detX, detY, detZ));
-        const float b1 = c.y(sX, sY, sZ) - a1 * c.x(sX, sY, sZ);
-        const float b2 = c.z(sX, sY, sZ) - a2 * c.x(sX, sY, sZ);
+            /*        (x)   ( 1)       ( 0) *
+             * ray:   (y) = (ay) * x + (by) *
+             *        (z)   (az)       (bz) */
+            const float a1 = (C::y(sX, sY, sZ) - C::y(detX, detY, detZ)) / (C::x(sX, sY, sZ) - C::x(detX, detY, detZ));
+            const float a2 = (C::z(sX, sY, sZ) - C::z(detX, detY, detZ)) / (C::x(sX, sY, sZ) - C::x(detX, detY, detZ));
+            const float b1 = C::y(sX, sY, sZ) - a1 * C::x(sX, sY, sZ);
+            const float b2 = C::z(sX, sY, sZ) - a2 * C::x(sX, sY, sZ);
+            const int nSlices = C::nSlices(voxX, voxY, voxZ);
+            const int nDim1 = C::nDim1(voxX, voxY, voxZ);
+            const int nDim2 = C::nDim2(voxX, voxY, voxZ);
+            float x = offsetSlice + .5f; // ray direction
+            float y = a1 * (offsetSlice - .5f * nSlices + .5f) + b1 + .5f * nDim1;
+            float z = a2 * (offsetSlice - .5f * nSlices + .5f) + b2 + .5f * nDim2;
 
-        /* Could be (for cubes):
-         *  sqrt(a1 * a1 + a2 * a2 + 1.0f) * outputScale; */
-        const float distCorrection = sqrt(a1 * a1 * scale1 + a2 * a2 * scale2 + 1.f)
-             * outputScale;
+            float val = 0.f;
+            for (int s = offsetSlice; s < endSlice; ++s) {
+                // add interpolated voxel value at current coordinate
+                val += C::tex(volumeTexture, z, y, x);
+                x += 1.f;
+                y += a1;
+                z += a2;
+            }
 
-        const int nSlices = c.nSlices(voxX, voxY, voxZ);
-        const int nDim1 = c.nDim1(voxX, voxY, voxZ);
-        const int nDim2 = c.nDim2(voxX, voxY, voxZ);
-
-        float x = offsetSlice + .5f; // ray direction
-        float y = a1 * (offsetSlice - .5f * nSlices + .5f) + b1 + .5f * nDim1;
-        float z = a2 * (offsetSlice - .5f * nSlices + .5f) + b2 + .5f * nDim2;
-
-        float val = 0.f;
-        for (int s = offsetSlice; s < endSlice; ++s) {
-            // add interpolated voxel value at current coordinate
-            val += c.tex(volumeTexture, z, y, x);
-            x += 1.f;
-            y += a1;
-            z += a2;
+            /* Distance correction: Could be (for cubes):
+             *  sqrt(a1 * a1 + a2 * a2 + 1.0f) * outputScale; */
+            val *= sqrt(a1 * a1 * scale1 + a2 * a2 * scale2 + 1.f);
+            // printf("row %d col %d rows %d cols %d\n %d\n ", row, col, rows, cols, val);
+            {% if projs_row_major %}
+                // faster if kernel is in MODE_ROW
+                projections[proj][r * cols + c] += val * outputScale;
+            {% else %}
+                // faster if kernel is not in MODE_ROW
+                projections[proj][c * rows + r] += val * outputScale;
+            {% endif %}
         }
-        val *= distCorrection;
-
-        projections[proj][row * cols + col] += val;
     }
 }
