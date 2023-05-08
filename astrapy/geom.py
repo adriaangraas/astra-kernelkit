@@ -124,13 +124,15 @@ class Geometry:
 @dataclass
 class GeometrySequence:
     """Structure-of-arrays geometry data object"""
+    XP = np
 
     @dataclass
     class DetectorSequence:
-        rows: cp.ndarray
-        cols: cp.ndarray
-        pixel_width: cp.ndarray
-        pixel_height: cp.ndarray
+        XP = np
+        rows: XP.ndarray
+        cols: XP.ndarray
+        pixel_width: XP.ndarray
+        pixel_height: XP.ndarray
 
         @property
         def height(self):
@@ -144,10 +146,10 @@ class GeometrySequence:
         def pixel_volume(self):
             return self.pixel_width * self.pixel_height
 
-    tube_position: cp.ndarray
-    detector_position: cp.ndarray
-    u: cp.ndarray
-    v: cp.ndarray
+    tube_position: XP.ndarray
+    detector_position: XP.ndarray
+    u: XP.ndarray
+    v: XP.ndarray
     detector: DetectorSequence
 
     def __len__(self):
@@ -156,13 +158,13 @@ class GeometrySequence:
     @property
     def detector_extent_min(self):
         return (self.detector_position
-                - self.v * self.detector.height[..., cp.newaxis] / 2
-                - self.u * self.detector.width[..., cp.newaxis] / 2)
+                - self.v * self.detector.height[..., self.XP.newaxis] / 2
+                - self.u * self.detector.width[..., self.XP.newaxis] / 2)
 
     @classmethod
     def fromList(cls, geometries: List[Geometry]):
-        _cvrt = lambda arr: cp.ascontiguousarray(
-            cp.array(arr, dtype=np.float32))
+        _cvrt = lambda arr: cls.XP.ascontiguousarray(
+            cls.XP.array(arr, dtype=cls.XP.float32))
 
         ds = cls.DetectorSequence(
             rows=_cvrt([g.detector.rows for g in geometries]),
@@ -201,9 +203,9 @@ def normalize_geoms_(
     volume_extent_min: Sequence,
     volume_extent_max: Sequence,
     volume_voxel_size: Sequence,
-    volume_rotation: Sequence = (0., 0., 0.),
-    xp=cp
+    volume_rotation: Sequence = (0., 0., 0.)
 ):
+    xp = geometries.XP
     shift_(geometries,
            -(xp.array(volume_extent_min) + xp.array(volume_extent_max)) / 2)
     scale_(geometries,

@@ -73,9 +73,9 @@ class ConeProjection(Kernel):
         #   less rows and columns, the computation is silently doing
         #   something that is similar to supersampling.
         assert len(projections) == len(geometries)
-        assert cp.all(
+        assert geometries.XP.all(
             geometries.detector.rows == geometries.detector.rows[0])
-        assert cp.all(
+        assert geometries.XP.all(
             geometries.detector.cols == geometries.detector.cols[0])
         for proj, rows, cols in zip(projections, geometries.detector.rows,
                                     geometries.detector.cols):
@@ -135,9 +135,16 @@ class ConeProjection(Kernel):
                      *cp.float32(output_scale[axis])))
 
         # directions of ray for each projection (a number: 0, 1, 2)
-        geom_axis = cp.argmax(cp.abs(
-            geometries.tube_position - geometries.detector_position),
-            axis=1, dtype=cp.int32).get()
+        if geometries.XP == np:
+            geom_axis = np.argmax(np.abs(
+                geometries.tube_position - geometries.detector_position),
+                axis=1)
+        elif geometries.XP == cp:
+            geom_axis = cp.argmax(cp.abs(
+                geometries.tube_position - geometries.detector_position),
+                axis=1, dtype=cp.int32).get()
+        else:
+            raise Exception("Geometry computation backend not understood.")
 
         # Run over all angles, grouping them into groups of the same
         # orientation (roughly horizontal vs. roughly vertical).
@@ -172,11 +179,12 @@ class ConeProjection(Kernel):
     def _upload_geometries(geometries: GeometrySequence, module: cp.RawModule):
         """Transfer geometries to device as structure of arrays."""
         # TODO(Adriaan): maybe make a mapping between variables
-        src = cp.ascontiguousarray(geometries.tube_position.T)
-        ext_min = cp.ascontiguousarray(geometries.detector_extent_min.T)
-        u = cp.ascontiguousarray(
+        xp = geometries.XP
+        src = xp.ascontiguousarray(geometries.tube_position.T)
+        ext_min = xp.ascontiguousarray(geometries.detector_extent_min.T)
+        u = xp.ascontiguousarray(
             geometries.u.T * geometries.detector.pixel_width)
-        v = cp.ascontiguousarray(
+        v = xp.ascontiguousarray(
             geometries.v.T * geometries.detector.pixel_height)
         srcsX, srcsY, srcsZ = src[0], src[1], src[2]
         detsSX, detsSY, detsSZ = ext_min[0], ext_min[1], ext_min[2]
@@ -277,9 +285,10 @@ class ConeBackprojection(Kernel):
             compile_use_texture3D = False
             projections = cp.array([p.ptr for p in projections_textures])
         elif isinstance(projections_textures, TextureObject):
-            assert cp.all(
+            xp = geometries.XP
+            assert xp.all(
                 geometries.detector.rows == geometries.detector.rows[0])
-            assert cp.all(
+            assert xp.all(
                 geometries.detector.cols == geometries.detector.cols[0])
             compile_use_texture3D = True
             projections = projections_textures
@@ -318,8 +327,7 @@ class ConeBackprojection(Kernel):
     @staticmethod
     def _geoms2params(geom: GeometrySequence,
                       voxel_size: Sequence,
-                      fdk_weighting: bool = False,
-                      xp=cp):
+                      fdk_weighting: bool = False):
         """Precomputed kernel parameters
 
         We need three things in the kernel:
@@ -344,6 +352,8 @@ class ConeBackprojection(Kernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
+        xp = geom.XP
+
         u = geom.u * geom.detector.pixel_width[..., xp.newaxis]
         v = geom.v * geom.detector.pixel_height[..., xp.newaxis]
         s = geom.tube_position
@@ -357,7 +367,7 @@ class ConeBackprojection(Kernel):
                         voxel_size[0] * voxel_size[2],
                         voxel_size[0] * voxel_size[1]])
         scale = (xp.sqrt(xp.linalg.norm(cr, axis=1)) /
-                 cp.linalg.det(cp.array((u, v, d - s)).swapaxes(0, 1)))
+                 xp.linalg.det(xp.array((u, v, d - s)).swapaxes(0, 1)))
 
         # TODO(Adriaan): it looks like my preweighting is different to ASTRA's
         #   and I always require voxel-volumetric scaling instead of below
@@ -369,22 +379,22 @@ class ConeBackprojection(Kernel):
         _det3z = lambda b, c: b[:, 0] * c[:, 1] - b[:, 1] * c[:, 0]
 
         numerator_u = _cuda_float4(
-            w=scale * xp.linalg.det(xp.array((s, v, d)).swapaxes(0, 1)),
+            w=scale * xp.linalg.det(xp.asarray((s, v, d)).swapaxes(0, 1)),
             x=scale * _det3x(v, s - d),
             y=scale * _det3y(v, s - d),
             z=scale * _det3z(v, s - d))
         numerator_v = _cuda_float4(
-            w=-scale * xp.linalg.det(xp.array((s, u, d)).swapaxes(0, 1)),
+            w=-scale * xp.linalg.det(xp.asarray((s, u, d)).swapaxes(0, 1)),
             x=-scale * _det3x(u, s - d),
             y=-scale * _det3y(u, s - d),
             z=-scale * _det3z(u, s - d))
         denominator = _cuda_float4(
-            w=scale * xp.linalg.det(xp.array((u, v, s)).swapaxes(0, 1)),
+            w=scale * xp.linalg.det(xp.asarray((u, v, s)).swapaxes(0, 1)),
             x=-scale * _det3x(u, v),
             y=-scale * _det3y(u, v),
             z=-scale * _det3z(u, v))
 
         if fdk_weighting:
-            assert np.allclose(denominator.w, 1.)
+            assert xp.allclose(denominator.w, 1.)
 
         return numerator_u, numerator_v, denominator
