@@ -36,10 +36,9 @@ struct Params {
 
 __constant__ Params params[{{ nr_projs_global }}];
 
-__global__
-void cone_bp(
+__global__ void cone_bp(
 {% if texture3D %}
-    texture<float, 3, cudaReadModeElementType> projTexture,
+    cudaTextureObject_t projTexture,
 {% else %}
     cudaTextureObject_t * projTextures,
 {% endif %}
@@ -51,7 +50,7 @@ void cone_bp(
     int voxelsZ,
     float outputScale
 ) {
-	int end= start + {{ nr_projs_block }};
+	int end = start + {{ nr_projs_block }};
 	if (end > nrProjections)
 		end = nrProjections;
 
@@ -77,9 +76,9 @@ void cone_bp(
     // scope hints the compiler to clean up variables?
 	{
 		for (int j = start; j < end; ++j) {
-			float4 nU = params[j].numeratorU;
-			float4 nV = params[j].numeratorV;
-			float4 d  = params[j].denominator;
+			const float4& nU = params[j].numeratorU;
+			const float4& nV = params[j].numeratorV;
+			const float4& d  = params[j].denominator;
 
 			float numU = nU.w + fX * nU.x + fY * nU.y + fZ * nU.z;
 			float numV = nV.w + fX * nV.x + fY * nV.y + fZ * nV.z;
@@ -91,7 +90,7 @@ void cone_bp(
 				U = numU * r;
 				V = numV * r;
 {% if texture3D %}
-				float val = tex3D(projTexture, U, V, j + .5f);
+				float val = tex3D<float>(projTexture, U, V, j + .5f);
 {% else %}
                 float val = tex2D<float>(projTextures[j], U, V);
 {% endif %}
@@ -110,6 +109,7 @@ void cone_bp(
 		endZ = voxelsZ - startZ;
 
     // write Z to volume synchronously
+    // Adriaan: an optimized write pattern does not seem to make a lot of effect
 	for (int i = 0; i < endZ; ++i)
 	    volume[  X * voxelsY * voxelsZ
                + Y * voxelsZ
