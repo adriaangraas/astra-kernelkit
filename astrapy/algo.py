@@ -169,7 +169,7 @@ def vol_params(
     # replicate the minimum voxel size to other dimensions, if necessary
     vox_sz = np.array(vox_sz)
     vox_sz[vox_sz == None] = (np.min(vox_sz[np.where(vox_sz != None)]))
-    vox_sz.astype(np.float)
+    vox_sz.astype(np.float32)
     # retry a resolve of the rest of the equations
     _resolve_dims(range(3), ext_min, ext_max)
 
@@ -700,7 +700,8 @@ def sirt_experimental(
     if mask is not None:
         mask = xp_vol.asarray(mask, dtype)
         if proj_mask is True:
-            proj_mask = [(m > 0).astype(xp_proj.int) for m in A(mask)]
+            type = cp.int32 if xp_proj == cp else np.int32
+            proj_mask = [(m > 0).astype(type) for m in A(mask)]
 
     if isinstance(proj_mask, collections.abc.Sequence):
         for y_i, m_i in zip(y, proj_mask):

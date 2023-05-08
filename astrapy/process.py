@@ -58,8 +58,8 @@ def _filter(num, filter_name: str = "ramlak", use_cupy: bool = True):
     """
     assert num % 2 == 0, "Filter must be even."
     xp = cp if use_cupy else np
-    n1 = xp.arange(0, num / 2 + 1, dtype=xp.int)
-    n2 = xp.arange(num / 2 - 1, 0, -1, dtype=xp.int)
+    n1 = xp.arange(0, num / 2 + 1, dtype=xp.int32)
+    n2 = xp.arange(num / 2 - 1, 0, -1, dtype=xp.int32)
     n = xp.concatenate((n1, n2))
     g = xp.zeros(len(n))
     g[0] = 0.25
