@@ -44,7 +44,7 @@ class Geometry:
         self.tube_position = np.array(tube_pos)
         self.detector_position = np.array(det_pos)
         # TODO(Adriaan): detector piercing is only useful for cone?
-        self.detector_piercing = det_piercing if det_piercing else det_pos
+        # self.detector_piercing = det_piercing if det_piercing else det_pos
         self.detector = detector
         self.u = np.array(u_unit)
         self.v = np.array(v_unit)

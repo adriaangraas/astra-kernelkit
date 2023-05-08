@@ -113,6 +113,7 @@ def _ramlak_filter_fourier(projections, verbose=False):
 
 def preweight(projections,
               geoms: list[Geometry],
+              detector_piercings: list = None,
               verbose: bool = False):
     """Pixelwise rescaling to compensate for ray length in conebeam images"""
     xp = cp.get_array_module(projections[0])
@@ -121,13 +122,15 @@ def preweight(projections,
     rows_view = xp.repeat(rows[:, :, xp.newaxis], 3, 2)
     cols_view = xp.repeat(cols[:, :, xp.newaxis], 3, 2)
 
-    for p, g in tqdm(zip(projections, geoms), disable=not verbose,
-                     desc="Preweighting"):
+    for i, (p, g) in enumerate(tqdm(zip(projections, geoms),
+                     disable=not verbose, desc="Preweighting")):
         assert cp.get_array_module(p) == xp, (
             "Arrays need to be all cupy or all numpy.")
         assert g.detector.rows == geoms[0].detector.rows
         assert g.detector.cols == geoms[0].detector.cols
-        central_ray = np.linalg.norm(g.detector_piercing - g.tube_position)
+        piercing_point = (g.detector_position if detector_piercings is None
+                          else detector_piercings[i])
+        central_ray = np.linalg.norm(piercing_point - g.tube_position)
         pixels = (xp.array(g.detector_extent_min)
                   + cols_view * xp.array(g.u * g.detector.pixel_width)
                   + rows_view * xp.array(g.v * g.detector.pixel_height))
