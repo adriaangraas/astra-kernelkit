@@ -95,7 +95,6 @@ __global__ void cone_bp(
                 float val = tex2D<float>(projTextures[j], U, V);
 {% endif %}
 				Z[i] += r * r * val;
-
 				numU += nU.z;
 				numV += nV.z;
 				den  += d.z;
@@ -108,10 +107,7 @@ __global__ void cone_bp(
 	if (endZ > voxelsZ - startZ)
 		endZ = voxelsZ - startZ;
 
-    // write Z to volume synchronously
-    // Adriaan: an optimized write pattern does not seem to make a lot of effect
+    // coalesced write to Z
 	for (int i = 0; i < endZ; ++i)
-	    volume[  X * voxelsY * voxelsZ
-               + Y * voxelsZ
-               + startZ + i] += Z[i] * outputScale;
+	    volume[((startZ + i) * voxelsY + Y) * voxelsX + X] += Z[i] * outputScale;
 }

@@ -15,12 +15,21 @@ from cupy.cuda.runtime import (
 
 from astrapy.data import ispitched
 
+texture_desc_2d = txt.TextureDescriptor(
+        [cudaAddressModeBorder] * 2, #array.ndim,
+        cudaFilterModeLinear,  # filter modebase = {NoneType} None
+        cudaReadModeElementType)
+texture_desc_3d = txt.TextureDescriptor(
+        [cudaAddressModeBorder] * 2, #array.ndim,
+        cudaFilterModeLinear,  # filter modebase = {NoneType} None
+        cudaReadModeElementType)
+channel_desc = txt.ChannelFormatDescriptor(
+    32, 0, 0, 0, cudaChannelFormatKindFloat)
+
 
 def _to_texture(array, type='array') -> txt.TextureObject:
     """Creates a single-channel 2D/3D texture object of type float"""
     assert array.ndim in [2, 3]
-    channel_desc = txt.ChannelFormatDescriptor(
-        32, 0, 0, 0, cudaChannelFormatKindFloat)
     if type.lower() == 'array':
         # We're using an CUDA array resource type, which I think makes a copy,
         # but has more efficient access, compared to linear memory. I can imagine
@@ -31,7 +40,7 @@ def _to_texture(array, type='array') -> txt.TextureObject:
         #  resource descriptor.. Try manually cleaning up `q`, maybe by
         #  force-deallocating or deleting it from the descriptor.
         cuda_array = txt.CUDAarray(channel_desc, *reversed(array.shape))
-        cuda_array.copy_from(array)
+        cuda_array.copy_from(array)  # async
         resource_desc = txt.ResourceDescriptor(
             cudaResourceTypeArray, cuArr=cuda_array)
     elif type.lower() == 'pitch2d':
@@ -50,11 +59,7 @@ def _to_texture(array, type='array') -> txt.TextureObject:
     else:
         raise ValueError(f"`type` {type} not understood.")
 
-    texture_desc = txt.TextureDescriptor(
-        [cudaAddressModeBorder] * array.ndim,
-        cudaFilterModeLinear,  # filter modebase = {NoneType} None
-        # cudaFilterModePoint,  # filter modebase = {NoneType} None
-        cudaReadModeElementType)
+    texture_desc = texture_desc_2d if array.ndim == 2 else texture_desc_3d
     return txt.TextureObject(resource_desc, texture_desc)
 
 
@@ -97,7 +102,7 @@ def _copy_to_symbol(module: cp.RawModule, name: str, array):
 
 
 @dataclass(frozen=True, order=True)
-class _cuda_float4:
+class cuda_float4:
     """Helper to encode CUDA float4 in the right order"""
     x: int
     y: int

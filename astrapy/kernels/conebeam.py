@@ -1,11 +1,10 @@
 from math import ceil
 from typing import Any, Sequence, Sized
-
 from cupy.cuda.texture import TextureObject
-
 from astrapy.data import *
 from astrapy.geom import *
-from astrapy.kernel import (_copy_to_symbol, _cuda_float4, _texture_shape, Kernel)
+from astrapy.kernel import (_copy_to_symbol, cuda_float4, _texture_shape,
+                            Kernel)
 
 
 class ConeProjection(Kernel):
@@ -226,8 +225,8 @@ class ConeProjection(Kernel):
 
 class ConeBackprojection(Kernel):
     # last dim is not number of threads, but volume slab thickness
-    VOXELS_PER_BLOCK = (4, 32, 64)  # 7/4.5 faster than (16, 32, 6), 32 on GTX 1880 Ti
-    LIMIT_PROJS_PER_BLOCK = 64
+    VOXELS_PER_BLOCK = (16, 32, 6)
+    LIMIT_PROJS_PER_BLOCK = 32
     MIN_LIMIT_PROJS = 1024
 
     def __init__(self,
@@ -259,7 +258,7 @@ class ConeBackprojection(Kernel):
 
     def __call__(self,
                  projections_textures: Any,
-                 geometries: Sequence,
+                 params: Sequence,
                  volume: cp.ndarray,
                  volume_extent_min: Sequence,
                  volume_extent_max: Sequence,
@@ -274,10 +273,6 @@ class ConeBackprojection(Kernel):
             of pointers to 2D texture objects (one for each projection), and
             accesses the textures by a list of pointers.
         """
-        if isinstance(geometries, list):
-            geometries = GeometrySequence.fromList(geometries)
-        else:
-            geometries = copy.deepcopy(geometries)
         if isinstance(volume, cp.ndarray):
             if volume.dtype not in self.SUPPORTED_DTYPES:
                 raise NotImplementedError(
@@ -289,65 +284,57 @@ class ConeBackprojection(Kernel):
             f"`{self.__class__.__name__}` is not tested without "
             f"C-contiguous data.")
         if not has_isotropic_voxels(
-                volume.shape, volume_extent_min, volume_extent_max):
+            volume.shape, volume_extent_min, volume_extent_max):
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
 
         if isinstance(projections_textures, list):
-            for i, p in enumerate(projections_textures):
-                if (not _texture_shape(p) ==
-                        (geometries.detector.rows[i],
-                         geometries.detector.cols[i])):
-                    raise ValueError("Projection texture resource needs to"
-                                     " match the detector dimensions in the"
-                                     " geometries.")
+            # TODO(Adriaan): this terribly slows down! don't run!
+            # for i, p in enumerate(projections_textures):
+            #     if (not _texture_shape(p) ==
+            #             (geometries.detector.rows[i],
+            #              geometries.detector.cols[i])):
+            #         raise ValueError("Projection texture resource needs to"
+            #                          " match the detector dimensions in the"
+            #                          " geometries.")
             compile_use_texture3D = False
             projections = cp.array([p.ptr for p in projections_textures])
         elif isinstance(projections_textures, TextureObject):
-            xp = geometries.XP
-            assert xp.all(
-                geometries.detector.rows == geometries.detector.rows[0])
-            assert xp.all(
-                geometries.detector.cols == geometries.detector.cols[0])
             compile_use_texture3D = True
             projections = projections_textures
         else:
             raise ValueError("Please give in a list of 2D TextureObject, or "
                              "one 3D TextureObject.")
 
-        vox_size = voxel_size(
-            volume.shape, volume_extent_min, volume_extent_max)
         vox_volume = voxel_volume(
             volume.shape, volume_extent_min, volume_extent_max)
 
-        module = self.compile(len(geometries), compile_use_texture3D)
+        module = self.compile(len(params), compile_use_texture3D)
         cone_bp = module.get_function("cone_bp")
-
-        normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
-                         vox_size, volume_rotation)
-        nU, nV, d = self._geoms2params(geometries, vox_size, False)
-        params = cp.array(
-            nU.to_list() + nV.to_list() + d.to_list()).T.flatten()
-        _copy_to_symbol(module, 'params', params)
+        _copy_to_symbol(module, 'params', params.flatten())
 
         # TODO(Adriaan): better to have SoA instead AoS?
         blocks = np.ceil(np.asarray(volume.shape) / self._vox_block).astype(
             np.int32)
-        for start in range(0, len(geometries), self._limit_projs_per_block):
+        for start in range(0, len(params), self._limit_projs_per_block):
             cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
                     (self._vox_block[0], self._vox_block[1]),  # threads
                     (projections,
                      volume,
                      start,
-                     len(geometries),
+                     len(params),
                      *volume.shape,
                      cp.float32(vox_volume)))
 
     @staticmethod
-    def _geoms2params(geom: GeometrySequence,
-                      voxel_size: Sequence,
-                      fdk_weighting: bool = False):
+    def geoms2params(
+        geometries: GeometrySequence,
+        vol_shape,
+        volume_extent_min,
+        volume_extent_max,
+        volume_rotation=(0., 0., 0.),
+        fdk_weighting: bool = False):
         """Precomputed kernel parameters
 
         We need three things in the kernel:
@@ -372,20 +359,30 @@ class ConeBackprojection(Kernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
-        xp = geom.XP
+        if isinstance(geometries, list):
+            geometries = GeometrySequence.fromList(geometries)
+        else:
+            geometries = copy.deepcopy(geometries)
 
-        u = geom.u * geom.detector.pixel_width[..., xp.newaxis]
-        v = geom.v * geom.detector.pixel_height[..., xp.newaxis]
-        s = geom.tube_position
-        d = geom.detector_extent_min
+        vox_size = voxel_size(
+            vol_shape, volume_extent_min, volume_extent_max)
+        normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
+                         vox_size, volume_rotation)
+
+        xp = geometries.XP
+
+        u = geometries.u * geometries.detector.pixel_width[..., xp.newaxis]
+        v = geometries.v * geometries.detector.pixel_height[..., xp.newaxis]
+        s = geometries.tube_position
+        d = geometries.detector_extent_min
 
         # NB(ASTRA): for cross(u,v) we invert the volume scaling (for the voxel
         # size normalization) to get the proper dimensions for
         # the scaling of the adjoint
         cr = xp.cross(u, v)  # maintain f32
-        cr *= xp.array([voxel_size[1] * voxel_size[2],
-                        voxel_size[0] * voxel_size[2],
-                        voxel_size[0] * voxel_size[1]])
+        cr *= xp.array([vox_size[1] * vox_size[2],
+                        vox_size[0] * vox_size[2],
+                        vox_size[0] * vox_size[1]])
         scale = (xp.sqrt(xp.linalg.norm(cr, axis=1)) /
                  xp.linalg.det(xp.array((u, v, d - s)).swapaxes(0, 1)))
 
@@ -398,17 +395,17 @@ class ConeBackprojection(Kernel):
         _det3y = lambda b, c: -(b[:, 0] * c[:, 2] - b[:, 2] * c[:, 0])
         _det3z = lambda b, c: b[:, 0] * c[:, 1] - b[:, 1] * c[:, 0]
 
-        numerator_u = _cuda_float4(
+        numerator_u = cuda_float4(
             w=scale * xp.linalg.det(xp.asarray((s, v, d)).swapaxes(0, 1)),
             x=scale * _det3x(v, s - d),
             y=scale * _det3y(v, s - d),
             z=scale * _det3z(v, s - d))
-        numerator_v = _cuda_float4(
+        numerator_v = cuda_float4(
             w=-scale * xp.linalg.det(xp.asarray((s, u, d)).swapaxes(0, 1)),
             x=-scale * _det3x(u, s - d),
             y=-scale * _det3y(u, s - d),
             z=-scale * _det3z(u, s - d))
-        denominator = _cuda_float4(
+        denominator = cuda_float4(
             w=scale * xp.linalg.det(xp.asarray((u, v, s)).swapaxes(0, 1)),
             x=-scale * _det3x(u, v),
             y=-scale * _det3y(u, v),
@@ -417,4 +414,7 @@ class ConeBackprojection(Kernel):
         if fdk_weighting:
             assert xp.allclose(denominator.w, 1.)
 
-        return numerator_u, numerator_v, denominator
+        return cp.asarray(
+            numerator_u.to_list() +
+            numerator_v.to_list() +
+            denominator.to_list()).T

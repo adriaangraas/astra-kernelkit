@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from astrapy import kernels, process
 from astrapy.geom import GeometrySequence, shift_
-from astrapy.kernel import _to_texture
+from astrapy.kernel import Kernel, _to_texture
 from astrapy.kernels import ConeBackprojection, ConeProjection
 
 
@@ -92,9 +92,13 @@ def vol_params(
                 if sz is not None:
                     x = xmax - xmin
                     n = x / sz
-                    assert np.allclose(n, np.round(n)), (
-                        f"Number of voxels in dim {dim} was inferred to be"
-                        f" {n}, which is not a rounded number.")
+                    if not np.allclose(n, np.round(n)):
+                        raise ValueError(
+                            f"Number of voxels in dim {dim} was inferred to be"
+                            f" {n}, which is not a rounded number. To have "
+                            f" isotropic voxels, please give in larger"
+                            f" volume size, or leave the volume extent out in"
+                            f" dim {dim} to have it inferred automatically.")
                     n = int(np.round(n))
                     inferred = True
                 else:
@@ -305,10 +309,16 @@ def _conebackprojection(
             process.filter(projs, filter=filter)
         return _to_texture(projs)
 
-    def _compute(projs_txt, geoms):
+    def _compute(projs_txt, geometries):
+        params = kernel.geoms2params(
+            geometries,
+            out.shape,
+            volume_extent_min,
+            volume_extent_max,
+            fdk_weighting=False)
         kernel(
             projs_txt,
-            geoms,
+            params,
             out,
             volume_extent_min,
             volume_extent_max)
@@ -336,6 +346,8 @@ def _conebackprojection(
         projs_txt = _preproc_to_texture(projections, geometries)
         _compute(projs_txt, geometries)
 
+    # TODO(Adriaan): priority, make sure this does not invoke a copy
+    out[...] = cp.reshape(out, tuple(reversed(out.shape))).T
     return out
 
 
@@ -437,6 +449,8 @@ def bp(
     preproc_fn: Callable = None,
     return_gpu: bool = False,
     verbose: bool = False,
+    kernel: Kernel = None,
+    out: cp.ndarray = None,
     **kwargs):
     """
     Executes `kernel`
@@ -469,10 +483,16 @@ def bp(
         volume_shape, volume_extent_min, volume_extent_max,
         volume_voxel_size, geometry, verbose=verbose)
 
-    volume_gpu = cp.empty(vol_shp, dtype=cp.float32)
+    if out is None:
+        volume_gpu = cp.empty(vol_shp, dtype=cp.float32)
+    else:
+        volume_gpu = out
+
+    if kernel is None:
+        kernel = kernels.ConeBackprojection()
 
     executor = _conebackprojection(
-        kernels.ConeBackprojection(),
+        kernel,
         projections=projections,
         geometries=geometry,
         volume_extent_min=vol_ext_min,
