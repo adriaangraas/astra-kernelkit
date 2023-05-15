@@ -335,9 +335,7 @@ def _conebackprojection(
                 sub_projs = projections[start:end]
                 sub_projs_gpu = cp.asarray(sub_projs)
                 projs_txt = _preproc_to_texture(sub_projs_gpu, sub_geoms)
-                stream.synchronize()
                 _compute(projs_txt, sub_geoms)
-                stream.synchronize()
                 yield out
     else:
         assert chunk_size is None, ("All `projections` are on the GPU, "
@@ -751,6 +749,8 @@ def sirt_experimental(
         # the same time. We take the memory-friendly and slightly more GPU
         # intensive approach here.
         y_tmp = A(x)  # forward project `x` into `y_tmp`
+        # We need speed:
+        # A(x, out=y_tmp)
 
         # compute residual in `y_tmp`, apply R
         for p_tmp, p, r in zip(y_tmp, y, R):
