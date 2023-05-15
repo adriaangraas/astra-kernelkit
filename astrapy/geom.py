@@ -197,6 +197,21 @@ class GeometrySequence:
     def __getitem__(self, item):
         return self.take(item)
 
+    def __deepcopy__(self, memodict={}):
+        xp = self.XP
+        return self.__class__(
+            tube_position=xp.copy(self.tube_position),
+            detector_position=xp.copy(self.detector_position),
+            u=xp.copy(self.u),
+            v=xp.copy(self.v),
+            detector=GeometrySequence.DetectorSequence(
+                rows=xp.copy(self.detector.rows),
+                cols=xp.copy(self.detector.cols),
+                pixel_width=xp.copy(self.detector.pixel_width),
+                pixel_height=xp.copy(self.detector.pixel_height),
+            )
+        )
+
 
 def normalize_geoms_(
     geometries: GeometrySequence,

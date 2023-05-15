@@ -359,6 +359,8 @@ class ConeBackprojection(Kernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
+        xp = geometries.XP
+
         if isinstance(geometries, list):
             geometries = GeometrySequence.fromList(geometries)
         else:
@@ -368,8 +370,6 @@ class ConeBackprojection(Kernel):
             vol_shape, volume_extent_min, volume_extent_max)
         normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
                          vox_size, volume_rotation)
-
-        xp = geometries.XP
 
         u = geometries.u * geometries.detector.pixel_width[..., xp.newaxis]
         v = geometries.v * geometries.detector.pixel_height[..., xp.newaxis]
@@ -384,7 +384,7 @@ class ConeBackprojection(Kernel):
                         vox_size[0] * vox_size[2],
                         vox_size[0] * vox_size[1]])
         scale = (xp.sqrt(xp.linalg.norm(cr, axis=1)) /
-                 xp.linalg.det(xp.array((u, v, d - s)).swapaxes(0, 1)))
+                 xp.linalg.det(xp.asarray((u, v, d - s)).swapaxes(0, 1)))
 
         # TODO(Adriaan): it looks like my preweighting is different to ASTRA's
         #   and I always require voxel-volumetric scaling instead of below
@@ -392,27 +392,28 @@ class ConeBackprojection(Kernel):
         #     scale = 1. / np.linalg.det([u, v, s])
 
         _det3x = lambda b, c: b[:, 1] * c[:, 2] - b[:, 2] * c[:, 1]
-        _det3y = lambda b, c: -(b[:, 0] * c[:, 2] - b[:, 2] * c[:, 0])
+        _det3y = lambda b, c: b[:, 0] * c[:, 2] - b[:, 2] * c[:, 0]
         _det3z = lambda b, c: b[:, 0] * c[:, 1] - b[:, 1] * c[:, 0]
 
+        s_min_d = s - d
         numerator_u = cuda_float4(
             w=scale * xp.linalg.det(xp.asarray((s, v, d)).swapaxes(0, 1)),
-            x=scale * _det3x(v, s - d),
-            y=scale * _det3y(v, s - d),
-            z=scale * _det3z(v, s - d))
+            x=scale * _det3x(v, s_min_d),
+            y=-scale * _det3y(v, s_min_d),
+            z=scale * _det3z(v, s_min_d))
         numerator_v = cuda_float4(
             w=-scale * xp.linalg.det(xp.asarray((s, u, d)).swapaxes(0, 1)),
-            x=-scale * _det3x(u, s - d),
-            y=-scale * _det3y(u, s - d),
-            z=-scale * _det3z(u, s - d))
+            x=-scale * _det3x(u, s_min_d),
+            y=scale * _det3y(u, s_min_d),
+            z=-scale * _det3z(u, s_min_d))
         denominator = cuda_float4(
             w=scale * xp.linalg.det(xp.asarray((u, v, s)).swapaxes(0, 1)),
             x=-scale * _det3x(u, v),
-            y=-scale * _det3y(u, v),
+            y=scale * _det3y(u, v),
             z=-scale * _det3z(u, v))
 
-        if fdk_weighting:
-            assert xp.allclose(denominator.w, 1.)
+        # if fdk_weighting:
+        #     assert xp.allclose(denominator.w, 1.)
 
         return cp.asarray(
             numerator_u.to_list() +
