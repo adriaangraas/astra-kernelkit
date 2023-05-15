@@ -357,6 +357,7 @@ def fp(
     volume_voxel_size: Sequence = None,
     chunk_size: int = 100,
     out: Sized = None,
+    kernel: Kernel = None,
     **kwargs):
     """
     
@@ -374,8 +375,6 @@ def fp(
         upload and launch a kernel for each consecutive chunk of `sinogram`
         and `geometry`.
     """
-    kernel = kernels.ConeProjection()
-
     if out is None:
         out = []
         for g in geometry:
@@ -389,6 +388,9 @@ def fp(
         volume_voxel_size,
         geometry,
     )
+
+    if kernel is None:
+        kernel = ConeProjection()
 
     executor = _coneprojection(
         kernel,
