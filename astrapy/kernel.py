@@ -123,8 +123,8 @@ class Kernel(ABC):
     @abstractmethod
     def __init__(self, resource: str, *args):
         """
-        Note: I don't want Kernel to do anything with global memory
-        allocation. Managing global memory (with on/offloading, limits, CuPy
+        Note: Kernel should not do anything with global memory allocation.
+        Managing global memory (with on/offloading, limits, CuPy
         pools, etc. is way too extensive to be handled within a kernel itself.
 
         :param path:
@@ -157,8 +157,10 @@ class Kernel(ABC):
         return cp.RawModule(
             code=code,
             # --std is required for name expressions
-            options=('--std=c++11',),  # TODO: error on c++17?
+            # -line-info for debugging
+            options=('--std=c++11',),  # TODO: c++17 is allowed from CUDA 12
             name_expressions=name_expressions)
+            # TODO(Adriaan): add `jittify=False` when compilation is slow?
 
     def _compile(self,
                  names: Sequence[str],
