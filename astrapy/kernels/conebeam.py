@@ -19,12 +19,15 @@ class ConeProjection(Kernel):
                  projs_row_major: bool = True,
                  mode_row: bool = False,
                  *args):
-        self._slices_per_thread = (slices_per_thread if slices_per_thread is not None
-                                   else self.SLICES_PER_THREAD)
-        self._pixels_per_y_thread = (pixels_per_thread if pixels_per_thread is not None
-                                 else self.PIXELS_PER_Y_THREAD)
-        self._pixels_in_x_block = (pixels_in_x_block if pixels_in_x_block is not None
-                                else self.PIXELS_IN_X_BLOCK)
+        self._slices_per_thread = (
+            slices_per_thread if slices_per_thread is not None
+            else self.SLICES_PER_THREAD)
+        self._pixels_per_y_thread = (
+            pixels_per_thread if pixels_per_thread is not None
+            else self.PIXELS_PER_Y_THREAD)
+        self._pixels_in_x_block = (
+            pixels_in_x_block if pixels_in_x_block is not None
+            else self.PIXELS_IN_X_BLOCK)
         self._projs_row_major = projs_row_major
         self._mode_row = mode_row
         super().__init__('cone_fp.cu', *args)
@@ -44,14 +47,14 @@ class ConeProjection(Kernel):
                              'projs_row_major': self._projs_row_major})
 
     def __call__(
-            self,
-            volume_texture: TextureObject,
-            volume_extent_min: Sequence,
-            volume_extent_max: Sequence,
-            geometries: Sequence,
-            projections: Sized,
-            volume_rotation: Sequence = (0., 0., 0.),
-            rays_per_pixel: int = 1
+        self,
+        volume_texture: TextureObject,
+        volume_extent_min: Sequence,
+        volume_extent_max: Sequence,
+        geometries: Sequence,
+        projections: Sized,
+        volume_rotation: Sequence = (0., 0., 0.),
+        rays_per_pixel: int = 1
     ):
         """Forward projection with conebeam geometry.
 
@@ -114,7 +117,7 @@ class ConeProjection(Kernel):
 
         volume_shape = _texture_shape(volume_texture)
         if not has_isotropic_voxels(
-                volume_shape, volume_extent_min, volume_extent_max):
+            volume_shape, volume_extent_min, volume_extent_max):
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
@@ -238,10 +241,12 @@ class ConeBackprojection(Kernel):
                                  else self.MIN_LIMIT_PROJS)
         self._vox_block = (voxels_per_block if voxels_per_block is not None
                            else self.VOXELS_PER_BLOCK)
-        self._limit_projs_per_block = (limit_projs_per_block if limit_projs_per_block is not None
-                                       else self.LIMIT_PROJS_PER_BLOCK)
+        self._limit_projs_per_block = (
+            limit_projs_per_block if limit_projs_per_block is not None
+            else self.LIMIT_PROJS_PER_BLOCK)
 
-    def compile(self, nr_projs: int = None, use_texture_3D: bool = True) -> cp.RawModule:
+    def compile(self, nr_projs: int = None,
+                use_texture_3D: bool = True) -> cp.RawModule:
         if nr_projs is None:
             nr_projs_global = self._min_limit_projs
         else:
