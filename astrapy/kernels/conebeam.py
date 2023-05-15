@@ -364,12 +364,12 @@ class ConeBackprojection(Kernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
-        xp = geometries.XP
-
         if isinstance(geometries, list):
             geometries = GeometrySequence.fromList(geometries)
         else:
             geometries = copy.deepcopy(geometries)
+
+        xp = geometries.XP
 
         vox_size = voxel_size(
             vol_shape, volume_extent_min, volume_extent_max)
