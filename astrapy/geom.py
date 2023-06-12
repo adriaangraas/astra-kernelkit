@@ -124,15 +124,15 @@ class Geometry:
 @dataclass
 class GeometrySequence:
     """Structure-of-arrays geometry data object"""
-    XP = np
+    xp = np
 
     @dataclass
     class DetectorSequence:
-        XP = np
-        rows: XP.ndarray
-        cols: XP.ndarray
-        pixel_width: XP.ndarray
-        pixel_height: XP.ndarray
+        xp = np
+        rows: xp.ndarray
+        cols: xp.ndarray
+        pixel_width: xp.ndarray
+        pixel_height: xp.ndarray
 
         @property
         def height(self):
@@ -146,10 +146,10 @@ class GeometrySequence:
         def pixel_volume(self):
             return self.pixel_width * self.pixel_height
 
-    tube_position: XP.ndarray
-    detector_position: XP.ndarray
-    u: XP.ndarray
-    v: XP.ndarray
+    tube_position: xp.ndarray
+    detector_position: xp.ndarray
+    u: xp.ndarray
+    v: xp.ndarray
     detector: DetectorSequence
 
     def __len__(self):
@@ -158,13 +158,13 @@ class GeometrySequence:
     @property
     def detector_extent_min(self):
         return (self.detector_position
-                - self.v * self.detector.height[..., self.XP.newaxis] / 2
-                - self.u * self.detector.width[..., self.XP.newaxis] / 2)
+                - self.v * self.detector.height[..., self.xp.newaxis] / 2
+                - self.u * self.detector.width[..., self.xp.newaxis] / 2)
 
     @classmethod
     def fromList(cls, geometries: List[Geometry]):
-        _cvrt = lambda arr: cls.XP.ascontiguousarray(
-            cls.XP.array(arr, dtype=cls.XP.float32))
+        _cvrt = lambda arr: cls.xp.ascontiguousarray(
+            cls.xp.array(arr, dtype=cls.xp.float32))
 
         ds = cls.DetectorSequence(
             rows=_cvrt([g.detector.rows for g in geometries]),
@@ -198,8 +198,8 @@ class GeometrySequence:
         return self.take(item)
 
     def __deepcopy__(self, memodict={}):
-        xp = self.XP
-        return self.__class__(
+        xp = self.xp
+        obj = self.__class__(
             tube_position=xp.copy(self.tube_position),
             detector_position=xp.copy(self.detector_position),
             u=xp.copy(self.u),
@@ -211,6 +211,9 @@ class GeometrySequence:
                 pixel_height=xp.copy(self.detector.pixel_height),
             )
         )
+        obj.xp = xp
+        obj.detector.xp = xp
+        return obj
 
 
 def normalize_geoms_(
@@ -220,7 +223,7 @@ def normalize_geoms_(
     volume_voxel_size: Sequence,
     volume_rotation: Sequence = (0., 0., 0.)
 ):
-    xp = geometries.XP
+    xp = geometries.xp
     shift_(geometries,
            -(xp.array(volume_extent_min) + xp.array(volume_extent_max)) / 2)
     scale_(geometries,
@@ -264,7 +267,7 @@ def scale(geom, scaling: np.ndarray):
 def scale_(geom, scaling):
     # detector pixels have to be scaled first, because
     # detector.width and detector.height need to be scaled accordingly
-    xp = cp.get_array_module(geom.u)
+    xp = geom.xp
     horiz_pixel_vector = geom.u * xp.array(geom.detector.pixel_width)[..., xp.newaxis]  # still f32
     horiz_pixel_vector /= scaling  # keeps dtype
     geom.detector.pixel_width = xp.linalg.norm(horiz_pixel_vector, axis=-1)

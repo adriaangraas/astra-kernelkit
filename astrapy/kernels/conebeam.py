@@ -201,7 +201,7 @@ class ConeProjection(Kernel):
     def _upload_geometries(geometries: GeometrySequence, module: cp.RawModule):
         """Transfer geometries to device as structure of arrays."""
         # TODO(Adriaan): maybe make a mapping between variables
-        xp = geometries.XP
+        xp = geometries.xp
         src = xp.ascontiguousarray(geometries.tube_position.T)
         ext_min = xp.ascontiguousarray(geometries.detector_extent_min.T)
         u = xp.ascontiguousarray(
@@ -369,7 +369,7 @@ class ConeBackprojection(Kernel):
         else:
             geometries = copy.deepcopy(geometries)
 
-        xp = geometries.XP
+        xp = geometries.xp
 
         vox_size = voxel_size(
             vol_shape, volume_extent_min, volume_extent_max)
