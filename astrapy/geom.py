@@ -218,16 +218,16 @@ class GeometrySequence:
 
 def normalize_geoms_(
     geometries: GeometrySequence,
-    volume_extent_min: Sequence,
-    volume_extent_max: Sequence,
-    volume_voxel_size: Sequence,
-    volume_rotation: Sequence = (0., 0., 0.)
+    volume_extent_min,
+    volume_extent_max,
+    volume_voxel_size,
+    volume_rotation
 ):
     xp = geometries.xp
     shift_(geometries,
-           -(xp.array(volume_extent_min) + xp.array(volume_extent_max)) / 2)
+           -(xp.asarray(volume_extent_min) + xp.asarray(volume_extent_max)) / 2)
     scale_(geometries,
-           xp.array(volume_voxel_size))
+           xp.asarray(volume_voxel_size))
     rotate_(geometries, *volume_rotation)
 
 
@@ -268,18 +268,20 @@ def scale_(geom, scaling):
     # detector pixels have to be scaled first, because
     # detector.width and detector.height need to be scaled accordingly
     xp = geom.xp
-    horiz_pixel_vector = geom.u * xp.array(geom.detector.pixel_width)[..., xp.newaxis]  # still f32
-    horiz_pixel_vector /= scaling  # keeps dtype
-    geom.detector.pixel_width = xp.linalg.norm(horiz_pixel_vector, axis=-1)
-    geom.u = horiz_pixel_vector / geom.detector.pixel_width[..., xp.newaxis]
+    pixel_vec = geom.u * geom.detector.pixel_width[..., xp.newaxis]  # still f32
+    pixel_vec /= scaling  # keeps dtype
+    geom.detector.pixel_width = xp.linalg.norm(pixel_vec, axis=-1)
+    xp.divide(pixel_vec, geom.detector.pixel_width[..., xp.newaxis],
+              out=geom.u)
 
-    vert_pixel_vector = geom.v * xp.array(geom.detector.pixel_height)[..., xp.newaxis]
-    vert_pixel_vector /= scaling
-    geom.detector.pixel_height = xp.linalg.norm(vert_pixel_vector, axis=-1)
-    geom.v = vert_pixel_vector / geom.detector.pixel_height[..., xp.newaxis]
-
-    geom.tube_position[:] = geom.tube_position[:] / scaling
-    geom.detector_position[:] = geom.detector_position[:] / scaling
+    xp.multiply(geom.v, geom.detector.pixel_height[..., xp.newaxis],
+                out=pixel_vec)
+    pixel_vec /= scaling
+    geom.detector.pixel_height = xp.linalg.norm(pixel_vec, axis=-1)
+    xp.divide(pixel_vec, geom.detector.pixel_height[..., xp.newaxis],
+              out=geom.v)
+    xp.divide(geom.tube_position, scaling, out=geom.tube_position)
+    xp.divide(geom.detector_position, scaling, out=geom.detector_position)
 
 
 def rotate(geom,
@@ -295,13 +297,13 @@ def rotate(geom,
 
 def rotate_(geom,
             roll: float = 0., pitch: float = 0., yaw: float = 0.):
-    xp = cp.get_array_module(geom.tube_position)
+    xp = geom.xp
     dtype = geom.tube_position.dtype
     R = xp.asarray(Geometry.angles2mat(roll, pitch, yaw), dtype=dtype)
-    geom.tube_position = geom.tube_position @ R
-    geom.detector_position = geom.detector_position @ R
-    geom.u = geom.u @ R
-    geom.v = geom.v @ R
+    geom.tube_position[...] = geom.tube_position @ R
+    geom.detector_position[...] = geom.detector_position @ R
+    geom.u[...] = geom.u @ R
+    geom.v[...] = geom.v @ R
 
 
 def plot(geoms: dict):
