@@ -85,10 +85,6 @@ class ConeProjection(Kernel):
         #   less rows and columns, the computation is silently doing
         #   something that is similar to supersampling.
         assert len(projections) == len(geometries)
-        assert geometries.XP.all(
-            geometries.detector.rows == geometries.detector.rows[0])
-        assert geometries.XP.all(
-            geometries.detector.cols == geometries.detector.cols[0])
         for proj, rows, cols in zip(projections, geometries.detector.rows,
                                     geometries.detector.cols):
             if not isinstance(proj, cp.ndarray):
