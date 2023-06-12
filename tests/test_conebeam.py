@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from astrapy.geom import Detector
-from astrapy.kernel import _to_texture
+from astrapy.kernel import copy_to_texture
 from astrapy.kernels import (Geometry, ConeBackprojection,
                              ConeProjection)
 
@@ -61,7 +61,7 @@ def test_scaling_ray_integral_through_cube(
 ):
     vol, vol_shp = volume(vol_sz)
     vol.fill(vol_fill)
-    vol_txt = _to_texture(vol)
+    vol_txt = copy_to_texture(vol)
     fpkern(
         volume_texture=vol_txt,
         volume_extent_min=np.array((-.5, -.5, -.5)) * vol_ext,
@@ -92,7 +92,7 @@ def test_matching_singleproj(fpkern, bpkern, vol_fill, vol_ext, vol_sz):
 
     g = cp.zeros((rows, cols), dtype=cp.float32)
     fpkern(
-        volume_texture=_to_texture(f),
+        volume_texture=copy_to_texture(f),
         volume_extent_min=-ext,
         volume_extent_max=ext,
         geometries=[geoms],
@@ -100,7 +100,7 @@ def test_matching_singleproj(fpkern, bpkern, vol_fill, vol_ext, vol_sz):
 
     f2 = cp.zeros_like(f)
     bpkern(
-        projections_textures=[_to_texture(g)],
+        projections_textures=[copy_to_texture(g)],
         geometries=[geoms],
         volume=f2,
         volume_extent_min=-ext,

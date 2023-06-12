@@ -3,7 +3,7 @@ from typing import Any, Sequence, Sized
 from cupy.cuda.texture import TextureObject
 from astrapy.data import *
 from astrapy.geom import *
-from astrapy.kernel import (_copy_to_symbol, cuda_float4, _texture_shape,
+from astrapy.kernel import (copy_to_symbol, cuda_float4, texture_shape,
                             Kernel)
 
 
@@ -115,7 +115,7 @@ class ConeProjection(Kernel):
             raise NotImplementedError(
                 "Detector supersampling is currently not supported.")
 
-        volume_shape = _texture_shape(volume_texture)
+        volume_shape = texture_shape(volume_texture)
         if not has_isotropic_voxels(
             volume_shape, volume_extent_min, volume_extent_max):
             raise NotImplementedError(
@@ -212,18 +212,18 @@ class ConeProjection(Kernel):
         detsSX, detsSY, detsSZ = ext_min[0], ext_min[1], ext_min[2]
         dUX, dUY, dUZ = u[0], u[1], u[2]
         dVX, dVY, dVZ = v[0], v[1], v[2]
-        _copy_to_symbol(module, 'srcsX', srcsX)
-        _copy_to_symbol(module, 'srcsY', srcsY)
-        _copy_to_symbol(module, 'srcsZ', srcsZ)
-        _copy_to_symbol(module, 'detsSX', detsSX)
-        _copy_to_symbol(module, 'detsSY', detsSY)
-        _copy_to_symbol(module, 'detsSZ', detsSZ)
-        _copy_to_symbol(module, 'detsUX', dUX)
-        _copy_to_symbol(module, 'detsUY', dUY)
-        _copy_to_symbol(module, 'detsUZ', dUZ)
-        _copy_to_symbol(module, 'detsVX', dVX)
-        _copy_to_symbol(module, 'detsVY', dVY)
-        _copy_to_symbol(module, 'detsVZ', dVZ)
+        copy_to_symbol(module, 'srcsX', srcsX)
+        copy_to_symbol(module, 'srcsY', srcsY)
+        copy_to_symbol(module, 'srcsZ', srcsZ)
+        copy_to_symbol(module, 'detsSX', detsSX)
+        copy_to_symbol(module, 'detsSY', detsSY)
+        copy_to_symbol(module, 'detsSZ', detsSZ)
+        copy_to_symbol(module, 'detsUX', dUX)
+        copy_to_symbol(module, 'detsUY', dUY)
+        copy_to_symbol(module, 'detsUZ', dUZ)
+        copy_to_symbol(module, 'detsVX', dVX)
+        copy_to_symbol(module, 'detsVY', dVY)
+        copy_to_symbol(module, 'detsVZ', dVZ)
 
 
 class ConeBackprojection(Kernel):
@@ -317,7 +317,7 @@ class ConeBackprojection(Kernel):
 
         module = self.compile(len(params), compile_use_texture3D)
         cone_bp = module.get_function("cone_bp")
-        _copy_to_symbol(module, 'params', params.flatten())
+        copy_to_symbol(module, 'params', params.flatten())
 
         # TODO(Adriaan): better to have SoA instead AoS?
         blocks = np.ceil(np.asarray(volume.shape) / self._vox_block).astype(

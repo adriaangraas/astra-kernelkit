@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from importlib import resources
 from typing import Sequence
 
+import astrapy as ap
 import cupy as cp
 import cupy.cuda.texture as txt
 import jinja2
@@ -13,21 +14,19 @@ from cupy.cuda.runtime import (
     cudaReadModeElementType, cudaResourceTypeArray,
     cudaResourceTypePitch2D)
 
-from astrapy.data import ispitched
-
-texture_desc_2d = txt.TextureDescriptor(
-        [cudaAddressModeBorder] * 2, #array.ndim,
-        cudaFilterModeLinear,  # filter modebase = {NoneType} None
-        cudaReadModeElementType)
-texture_desc_3d = txt.TextureDescriptor(
-        [cudaAddressModeBorder] * 2, #array.ndim,
-        cudaFilterModeLinear,  # filter modebase = {NoneType} None
-        cudaReadModeElementType)
-channel_desc = txt.ChannelFormatDescriptor(
+_texture_desc_2d = txt.TextureDescriptor(
+    [cudaAddressModeBorder] * 2,  # array.ndim,
+    cudaFilterModeLinear,  # filter modebase = {NoneType} None
+    cudaReadModeElementType)
+_texture_desc_3d = txt.TextureDescriptor(
+    [cudaAddressModeBorder] * 2,  # array.ndim,
+    cudaFilterModeLinear,  # filter modebase = {NoneType} None
+    cudaReadModeElementType)
+_channel_desc = txt.ChannelFormatDescriptor(
     32, 0, 0, 0, cudaChannelFormatKindFloat)
 
 
-def _to_texture(array, type='array') -> txt.TextureObject:
+def copy_to_texture(array, type: str = 'array') -> txt.TextureObject:
     """Creates a single-channel 2D/3D texture object of type float"""
     assert array.ndim in [2, 3]
     if type.lower() == 'array':
@@ -39,7 +38,7 @@ def _to_texture(array, type='array') -> txt.TextureObject:
         #  `q` doesn't get cleaned up as it is still associated with the
         #  resource descriptor.. Try manually cleaning up `q`, maybe by
         #  force-deallocating or deleting it from the descriptor.
-        cuda_array = txt.CUDAarray(channel_desc, *reversed(array.shape))
+        cuda_array = txt.CUDAarray(_channel_desc, *reversed(array.shape))
         cuda_array.copy_from(array)  # async
         resource_desc = txt.ResourceDescriptor(
             cudaResourceTypeArray, cuArr=cuda_array)
@@ -53,17 +52,17 @@ def _to_texture(array, type='array') -> txt.TextureObject:
         # shape can be retrieved later using `_texture_shape`.
         assert array.base.ndim == 2
         resource_desc = txt.ResourceDescriptor(
-            cudaResourceTypePitch2D, arr=array, chDesc=channel_desc,
+            cudaResourceTypePitch2D, arr=array, chDesc=_channel_desc,
             width=array_base.shape[1], height=array_base.shape[0],
             pitchInBytes=array_base.shape[1] * array.dtype.itemsize)
     else:
         raise ValueError(f"`type` {type} not understood.")
 
-    texture_desc = texture_desc_2d if array.ndim == 2 else texture_desc_3d
+    texture_desc = _texture_desc_2d if array.ndim == 2 else _texture_desc_3d
     return txt.TextureObject(resource_desc, texture_desc)
 
 
-def _texture_shape(obj: txt.TextureObject) -> tuple:
+def texture_shape(obj: txt.TextureObject) -> tuple:
     """Shape of the array in the texture
 
     This does *not* return the pitched shape, but the original shape of the
@@ -83,7 +82,7 @@ def _texture_shape(obj: txt.TextureObject) -> tuple:
     raise ValueError("Texture Resource Descriptor not understood.")
 
 
-def _copy_to_symbol(module: cp.RawModule, name: str, array):
+def copy_to_symbol(module: cp.RawModule, name: str, array):
     """Copy array to address on GPU, e.g. constant memory
 
     Inspired by: https://github.com/cupy/cupy/issues/1703
@@ -160,7 +159,7 @@ class Kernel(ABC):
             # -line-info for debugging
             options=('--std=c++11',),  # TODO: c++17 is allowed from CUDA 12
             name_expressions=name_expressions)
-            # TODO(Adriaan): add `jittify=False` when compilation is slow?
+        # TODO(Adriaan): add `jittify=False` when compilation is slow?
 
     def _compile(self,
                  names: Sequence[str],
@@ -178,7 +177,8 @@ class Kernel(ABC):
         if self.__compilation_times > 5:
             # technically the kernel is only compiled when a function
             # is retrieved from it
-            warnings.warn(f"Module `{self.__class__.__name__}` has been recompiled "
-                          f"5 times, consider passing limits.")
+            warnings.warn(
+                f"Module `{self.__class__.__name__}` has been recompiled "
+                f"5 times, consider passing limits.")
 
         return self.__compilation_cache[h_names][h_kwargs]

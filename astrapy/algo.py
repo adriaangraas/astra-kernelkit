@@ -6,11 +6,7 @@ from typing import Any, Callable, Sequence, Sized
 import cupy as cp
 import numpy as np
 from tqdm import tqdm
-
-from astrapy import kernels, process
-from astrapy.geom import GeometrySequence, shift_
-from astrapy.kernel import Kernel, _to_texture
-from astrapy.kernels import ConeBackprojection, ConeProjection
+import astrapy as ap
 
 
 def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):
@@ -18,7 +14,7 @@ def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):
     #    perhaps use polygon clipping on multiple geoms
     #   to find the intersection of volume areas.
     cg = copy.deepcopy(geometry)  # TODO
-    shift_(cg, -np.array(object_position))
+    ap.shift_(cg, -np.array(object_position))
 
     # assert that origin is on the source-detector line
     source_vec = cg.tube_position
@@ -179,7 +175,7 @@ def vol_params(
 
     # replicate x, y dims, if necessary
     if resolved_dims[0] and not resolved_dims[1]:
-        shp[1] = shp[0] 
+        shp[1] = shp[0]
     if resolved_dims[1] and not resolved_dims[0]:
         shp[0] = shp[1]
     # retry a resolve of the rest of the equations
@@ -223,7 +219,7 @@ def vol_params(
 
 
 def _coneprojection(
-    kernel: ConeProjection,
+    kernel: ap.ConeProjection,
     volume,
     volume_extent_min,
     volume_extent_max,
@@ -243,7 +239,7 @@ def _coneprojection(
     :param geometries:
     :param kwargs:
     """
-    volume_texture = _to_texture(volume)
+    volume_texture = ap.copy_to_texture(volume)
 
     if out is None:
         assert chunk_size > 0
@@ -283,7 +279,7 @@ def _coneprojection(
 
 
 def _conebackprojection(
-    kernel: ConeBackprojection,
+    kernel: ap.ConeBackprojection,
     projections: Sequence,
     geometries: Sequence,
     volume_extent_min: Sequence,
@@ -305,8 +301,8 @@ def _conebackprojection(
         if preproc_fn is not None:
             preproc_fn(projs)
         if filter is not None:
-            process.preweight(projs, geoms)
-            process.filter(projs, filter=filter)
+            ap.preweight(projs, geoms)
+            ap.filter(projs, filter=filter)
         return _to_texture(projs)
 
     def _compute(projs_txt, geometries):
@@ -357,7 +353,7 @@ def fp(
     volume_voxel_size: Sequence = None,
     chunk_size: int = 100,
     out: Sized = None,
-    kernel: Kernel = None,
+    kernel: ap.Kernel = None,
     **kwargs):
     """
     
@@ -390,7 +386,7 @@ def fp(
     )
 
     if kernel is None:
-        kernel = ConeProjection()
+        kernel = ap.ConeProjection()
 
     executor = _coneprojection(
         kernel,
@@ -449,7 +445,7 @@ def bp(
     preproc_fn: Callable = None,
     return_gpu: bool = False,
     verbose: bool = False,
-    kernel: Kernel = None,
+    kernel: ap.Kernel = None,
     out: cp.ndarray = None,
     **kwargs):
     """
@@ -489,7 +485,7 @@ def bp(
         volume_gpu = out
 
     if kernel is None:
-        kernel = kernels.ConeBackprojection()
+        kernel = ap.ConeBackprojection()
 
     executor = _conebackprojection(
         kernel,
@@ -515,7 +511,7 @@ def bp(
 
 class _A:
     def __init__(self,
-                 fpkern: ConeProjection,
+                 fpkern: ap.ConeProjection,
                  vol_ext_min,
                  vol_ext_max,
                  geometry,

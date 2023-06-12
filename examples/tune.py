@@ -12,7 +12,7 @@ from kernel_tuner.interface import tune
 from kernel_tuner.runners.sequential import SequentialRunner
 
 from astrapy import Detector, Geometry, fp, rotate, ConeBackprojection, ConeProjection
-from astrapy.kernel import _to_texture
+from astrapy.kernel import copy_to_texture
 
 
 class RayveInstance(CompilationInstance):
@@ -151,7 +151,7 @@ compiler_options = {}
 projs = [cp.zeros((g.detector.rows, g.detector.cols), dtype=np.float32) for g in geoms]
 dev = RayveFpInterface(kernel_options, compiler_options)
 arguments = {
-    'volume_texture': _to_texture(vol),
+    'volume_texture': copy_to_texture(vol),
     'volume_extent_min': vol_min,
     'volume_extent_max': vol_max,
     'geometries': geoms,
