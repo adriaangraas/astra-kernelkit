@@ -126,8 +126,6 @@ def preweight(projections,
                      disable=not verbose, desc="Preweighting")):
         assert cp.get_array_module(p) == xp, (
             "Arrays need to be all cupy or all numpy.")
-        assert g.detector.rows == geoms[0].detector.rows
-        assert g.detector.cols == geoms[0].detector.cols
         piercing_point = (g.detector_position if detector_piercings is None
                           else detector_piercings[i])
         central_ray = np.linalg.norm(piercing_point - g.tube_position)
