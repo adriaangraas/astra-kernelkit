@@ -282,8 +282,8 @@ def _conebackprojection(
     kernel: ap.ConeBackprojection,
     projections: Sequence,
     geometries: Sequence,
-    volume_extent_min: Sequence,
-    volume_extent_max: Sequence,
+    volume_extent_min,
+    volume_extent_max,
     out,
     chunk_size: int = None,
     dtype=cp.float32,
@@ -488,6 +488,9 @@ def bp(
     vol_shp, vol_ext_min, vol_ext_max, _ = vol_params(
         volume_shape, volume_extent_min, volume_extent_max,
         volume_voxel_size, geometry, verbose=verbose)
+    vol_shp = np.asarray(vol_shp)
+    vol_ext_min = np.asarray(vol_ext_min)
+    vol_ext_max = np.asarray(vol_ext_max)
 
     if out is None:
         volume_gpu = cp.empty(vol_shp, dtype=cp.float32)
