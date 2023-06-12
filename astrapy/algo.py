@@ -286,7 +286,6 @@ def _conebackprojection(
     volume_extent_max,
     out,
     chunk_size: int = None,
-    dtype=cp.float32,
     filter: Any = None,
     preproc_fn: Callable = None,
     texture_type='array',
@@ -330,25 +329,20 @@ def _conebackprojection(
             volume_extent_max)
 
     # run chunk-based algorithm if one or more projections are on CPU
-    if np.any([isinstance(p, np.ndarray) for p in projections]):
-        assert chunk_size > 0
-        with cp.cuda.stream.Stream() as stream:
-            for start in tqdm(range(0, len(geometries), chunk_size),
-                              desc="Backprojecting",
-                              disable=not verbose):
-                end = min(start + chunk_size, len(geometries))
-                sub_geoms = geometries[start:end]
-                sub_projs = projections[start:end]
-                sub_projs_gpu = cp.asarray(sub_projs)
-                projs_txt = _preproc_to_texture(sub_projs_gpu, sub_geoms)
-                _compute(projs_txt, sub_geoms)
-                yield out
-    else:
-        assert chunk_size is None, ("All `projections` are on the GPU, "
-                                    "no `chunk_size` needed.")
-        projections = cp.asarray(projections)
-        projs_txt = _preproc_to_texture(projections, geometries)
-        _compute(projs_txt, geometries)
+    with cp.cuda.stream.Stream():
+        if chunk_size is None:
+            blocks = range(0, 1)
+            chunk_size = len(geometries)
+        else:
+            blocks = range(0, len(geometries), chunk_size)
+
+        for start in tqdm(blocks, desc="Backprojecting", disable=not verbose):
+            end = min(start + chunk_size, len(geometries))
+            sub_geoms = geometries[start:end]
+            sub_projs = projections[start:end]
+            projs_txt = _preproc_to_texture(sub_projs, sub_geoms)
+            _compute(projs_txt, sub_geoms)
+            yield out
 
     # TODO(Adriaan): priority, make sure this does not invoke a copy
     out[...] = cp.reshape(out, tuple(reversed(out.shape))).T
@@ -450,7 +444,7 @@ def bp(
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     volume_voxel_size: Sequence = None,
-    chunk_size: int = 100,
+    chunk_size: int = None,
     filter: Any = None,
     preproc_fn: Callable = None,
     return_gpu: bool = False,
@@ -480,10 +474,6 @@ def bp(
     """
     if len(projections) != len(geometry):
         raise ValueError
-
-    if chunk_size is None:
-        # TODO: allow None and auto infer good chunk size
-        raise NotImplementedError()
 
     vol_shp, vol_ext_min, vol_ext_max, _ = vol_params(
         volume_shape, volume_extent_min, volume_extent_max,
