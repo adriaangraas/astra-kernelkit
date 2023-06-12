@@ -12,7 +12,7 @@ import numpy as np
 from cupy.cuda.runtime import (
     cudaAddressModeBorder, cudaChannelFormatKindFloat, cudaFilterModeLinear,
     cudaReadModeElementType, cudaResourceTypeArray,
-    cudaResourceTypePitch2D)
+    cudaResourceTypePitch2D, cudaResourceTypeLinear)
 
 _texture_desc_2d = txt.TextureDescriptor(
     [cudaAddressModeBorder] * 2,  # array.ndim,
@@ -42,17 +42,22 @@ def copy_to_texture(array, type: str = 'array') -> txt.TextureObject:
         cuda_array.copy_from(array)  # async
         resource_desc = txt.ResourceDescriptor(
             cudaResourceTypeArray, cuArr=cuda_array)
-    elif type.lower() == 'pitch2d':
+    elif type.lower() == 'pitch2d' or type.lower() == 'linear':
         array_base = array.base if array.base is not None else array
-        if not ispitched(array_base):
-            raise ValueError("Array data `array.base` needs to have pitched "
-                             "dimensions. Use `aspitched(array)`.")
+        if type.lower() == 'pitch2d':
+            if not ap.ispitched(array_base):
+                raise ValueError(
+                    "Array data `array.base` needs to have pitched "
+                    "dimensions. Use `aspitched(array)`.")
+            res_type = cudaResourceTypePitch2D
+        else:
+            res_type = cudaResourceTypeLinear
 
         # In `arr` we are putting a possible view object, so that the original
         # shape can be retrieved later using `_texture_shape`.
         assert array.base.ndim == 2
         resource_desc = txt.ResourceDescriptor(
-            cudaResourceTypePitch2D, arr=array, chDesc=_channel_desc,
+            res_type, arr=array, chDesc=_channel_desc,
             width=array_base.shape[1], height=array_base.shape[0],
             pitchInBytes=array_base.shape[1] * array.dtype.itemsize)
     else:
