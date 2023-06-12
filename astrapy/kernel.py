@@ -28,9 +28,9 @@ _channel_desc = txt.ChannelFormatDescriptor(
 
 def copy_to_texture(array, type: str = 'array') -> txt.TextureObject:
     """Creates a single-channel 2D/3D texture object of type float"""
-    assert array.ndim in [2, 3]
     if type.lower() == 'array':
-        # We're using an CUDA array resource type, which I think makes a copy,
+        assert array.ndim in (2, 3)
+        # We're using an CUDA array resource type,
         # but has more efficient access, compared to linear memory. I can imagine
         # that, when memory is an issue, it would be more performant to prefer
         # linear memory for projections.
@@ -42,29 +42,22 @@ def copy_to_texture(array, type: str = 'array') -> txt.TextureObject:
         cuda_array.copy_from(array)  # async
         resource_desc = txt.ResourceDescriptor(
             cudaResourceTypeArray, cuArr=cuda_array)
-    elif type.lower() == 'pitch2d' or type.lower() == 'linear':
+        return txt.TextureObject(resource_desc, _texture_desc_3d)
+    elif type.lower() == 'pitch2d':
+        assert array.ndim in (2,)
         array_base = array.base if array.base is not None else array
-        if type.lower() == 'pitch2d':
-            if not ap.ispitched(array_base):
-                raise ValueError(
-                    "Array data `array.base` needs to have pitched "
-                    "dimensions. Use `aspitched(array)`.")
-            res_type = cudaResourceTypePitch2D
-        else:
-            res_type = cudaResourceTypeLinear
-
-        # In `arr` we are putting a possible view object, so that the original
-        # shape can be retrieved later using `_texture_shape`.
-        assert (array.base if array.base is not None else array).ndim == 2
+        assert array_base.ndim == 2
+        if not ap.ispitched(array_base):
+            raise ValueError(
+                "Array data `array.base` needs to have pitched "
+                "dimensions. Use `aspitched(array)`.")
         resource_desc = txt.ResourceDescriptor(
-            res_type, arr=array, chDesc=_channel_desc,
+            cudaResourceTypePitch2D, arr=array, chDesc=_channel_desc,
             width=array_base.shape[1], height=array_base.shape[0],
             pitchInBytes=array_base.shape[1] * array.dtype.itemsize)
+        return txt.TextureObject(resource_desc, _texture_desc_2d)
     else:
         raise ValueError(f"`type` {type} not understood.")
-
-    texture_desc = _texture_desc_2d if array.ndim == 2 else _texture_desc_3d
-    return txt.TextureObject(resource_desc, texture_desc)
 
 
 def texture_shape(obj: txt.TextureObject) -> tuple:

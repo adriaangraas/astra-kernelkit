@@ -289,6 +289,7 @@ def _conebackprojection(
     dtype=cp.float32,
     filter: Any = None,
     preproc_fn: Callable = None,
+    texture_type='array',
     verbose=True,
     **kwargs):
     """
@@ -298,12 +299,21 @@ def _conebackprojection(
     """
 
     def _preproc_to_texture(projs, geoms):
+        if texture_type.lower() == 'pitch2d':
+            projs = [ap.aspitched(p, cp) for p in projs]
+        else:
+            projs = cp.asarray(projs)
+            
         if preproc_fn is not None:
             preproc_fn(projs)
         if filter is not None:
             ap.preweight(projs, geoms)
             ap.filter(projs, filter=filter)
-        return _to_texture(projs)
+
+        if texture_type.lower() == 'pitch2d':
+            return [ap.copy_to_texture(p, texture_type) for p in projs]
+        else:
+            return ap.copy_to_texture(projs, texture_type)
 
     def _compute(projs_txt, geometries):
         params = kernel.geoms2params(
