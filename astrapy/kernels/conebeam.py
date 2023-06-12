@@ -334,8 +334,7 @@ class ConeBackprojection(Kernel):
         vol_shape,
         volume_extent_min,
         volume_extent_max,
-        volume_rotation=(0., 0., 0.),
-        fdk_weighting: bool = False):
+        volume_rotation=(0., 0., 0.)):
         """Precomputed kernel parameters
 
         We need three things in the kernel:
