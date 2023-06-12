@@ -56,8 +56,6 @@ def aspitched(array, xp=None):
     xp : object Array module used for the new array in the pitched shape. If
     `None`, the module of the given array is used.
     """
-    assert array.ndim == 2
-
     if xp is None:  # `xp` is the output array module
         xp = cp.get_array_module(array)
 
@@ -66,8 +64,8 @@ def aspitched(array, xp=None):
 
     pitched_array = xp.zeros(pitched_shape(array), dtype=array.dtype)
     # TODO(Adriaan): can the following be done without a copy?
-    pitched_array[:, :array.shape[1]] = xp.asarray(array[...])
-    vw = pitched_array[:, :array.shape[1]]
+    pitched_array[..., :array.shape[-1]] = xp.asarray(array[...])
+    vw = pitched_array[..., :array.shape[-1]]
     assert vw.flags.owndata is False
     assert vw.base is pitched_array
     return vw
