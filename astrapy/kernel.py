@@ -55,7 +55,7 @@ def copy_to_texture(array, type: str = 'array') -> txt.TextureObject:
 
         # In `arr` we are putting a possible view object, so that the original
         # shape can be retrieved later using `_texture_shape`.
-        assert array.base.ndim == 2
+        assert (array.base if array.base is not None else array).ndim == 2
         resource_desc = txt.ResourceDescriptor(
             res_type, arr=array, chDesc=_channel_desc,
             width=array_base.shape[1], height=array_base.shape[0],
