@@ -45,15 +45,28 @@ def ispitched(array) -> bool:
     return pitched_shape(arr) == arr.shape
 
 
-def aspitched(array):
-    """Pads array to pitched shape and returns view in original shape."""
-    assert array.ndim == 2
-    if ispitched(array):
-        return array
+def aspitched(array, xp=None):
+    """Pads array to pitched shape and returns a view in original shape.
 
-    xp = cp.get_array_module(array)
+    This function can also be used to transfer a non-pitched CPU array to a
+    pitched GPU array.
+
+    Parameters
+    ----------
+    xp : object Array module used for the new array in the pitched shape. If
+    `None`, the module of the given array is used.
+    """
+    assert array.ndim == 2
+
+    if xp is None:  # `xp` is the output array module
+        xp = cp.get_array_module(array)
+
+    if ispitched(array) and cp.get_array_module(array) == xp:
+        return xp.asarray(array)
+
     pitched_array = xp.zeros(pitched_shape(array), dtype=array.dtype)
-    pitched_array[:, :array.shape[1]] = array[...]
+    # TODO(Adriaan): can the following be done without a copy?
+    pitched_array[:, :array.shape[1]] = xp.asarray(array[...])
     vw = pitched_array[:, :array.shape[1]]
     assert vw.flags.owndata is False
     assert vw.base is pitched_array
