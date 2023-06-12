@@ -153,11 +153,11 @@ class ConeProjection(Kernel):
                      *cp.float32(output_scale[axis])))
 
         # directions of ray for each projection (a number: 0, 1, 2)
-        if geometries.XP == np:
+        if geometries.xp == np:
             geom_axis = np.argmax(np.abs(
                 geometries.tube_position - geometries.detector_position),
                 axis=1)
-        elif geometries.XP == cp:
+        elif geometries.xp == cp:
             geom_axis = cp.argmax(cp.abs(
                 geometries.tube_position - geometries.detector_position),
                 axis=1, dtype=cp.int32).get()
