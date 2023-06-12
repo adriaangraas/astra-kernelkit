@@ -3,6 +3,8 @@ from typing import Sequence, Tuple
 import cupy as cp
 import numpy as np
 
+_PITCH = 32
+
 
 def voxel_size(volume_shape: Sequence,
                extent_min: Sequence,
@@ -31,8 +33,8 @@ def voxel_volume(volume_shape: Sequence,
 
 
 def pitched_shape(array) -> Tuple[int, int, int]:
-    assert array.flags.c_contiguous
-    bytes = (int(np.ceil(array.shape[-1] * array.dtype.itemsize / 32)) * 32)
+    bytes = (int(np.ceil(array.shape[-1] * array.dtype.itemsize / _PITCH))
+             * _PITCH)
     items = bytes / array.dtype.itemsize
     assert items.is_integer()
     return *array.shape[:-1], int(items)
