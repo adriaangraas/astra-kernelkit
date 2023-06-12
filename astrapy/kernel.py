@@ -125,7 +125,7 @@ class Kernel(ABC):
     SUPPORTED_DTYPES = [cp.float32]
 
     @abstractmethod
-    def __init__(self, resource: str, *args):
+    def __init__(self, resource: str, package='astrapy.cuda', *args):
         """
         Note: Kernel should not do anything with global memory allocation.
         Managing global memory (with on/offloading, limits, CuPy
@@ -135,8 +135,9 @@ class Kernel(ABC):
         :param allow_recompilation:
         """
         # we cannot load the source immediately because some template
-        # arguments may only be known at runtime.
-        self._cuda_source = resources.read_text('astrapy.cuda', resource)
+        # arguments may only be known at call time.
+        self._cuda_source = resources.read_text(package=package,
+                                                resource=resource)
         self.__compilation_cache = {}
         self.__compilation_times = 0
 
