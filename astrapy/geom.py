@@ -1,8 +1,6 @@
 import copy
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
-
-import cupy as cp
+from typing import List, Sequence
 import numpy as np
 import transforms3d
 
@@ -39,12 +37,9 @@ class Geometry:
                  det_pos: Sequence,
                  u_unit: Sequence,
                  v_unit: Sequence,
-                 detector,
-                 det_piercing=None):
+                 detector):
         self.tube_position = np.array(tube_pos)
         self.detector_position = np.array(det_pos)
-        # TODO(Adriaan): detector piercing is only useful for cone?
-        # self.detector_piercing = det_piercing if det_piercing else det_pos
         self.detector = detector
         self.u = np.array(u_unit)
         self.v = np.array(v_unit)
@@ -55,18 +50,6 @@ class Geometry:
                 - self.v * self.detector.height / 2
                 - self.u * self.detector.width / 2)
 
-    # @property
-    # def detector_roll(self):
-    #     return self.__det_roll
-    #
-    # @property
-    # def detector_pitch(self):
-    #     return self.__det_pitch
-    #
-    # @property
-    # def detector_yaw(self):
-    #     return self.__det_yaw
-    #
     # @property
     # def u(self):
     #     """Horizontal u-vector in the detector frame."""
@@ -82,7 +65,6 @@ class Geometry:
     #                                     self.__det_pitch,
     #                                     self.__det_yaw)
     #     return R @ [0, 0, 1]
-
 
     @staticmethod
     def angles2mat(r, p, y) -> np.ndarray:
@@ -115,10 +97,10 @@ class Geometry:
         self.__v = value
 
     def __str__(self):
-        return f"Tube {self.tube_position} " + \
-               f"Detector {self.detector_position}" + \
-               f"U {self.u}" + \
-               f"V {self.v}"
+        return (f"Tube {self.tube_position} "
+                f"Detector {self.detector_position}"
+                f"U {self.u}"
+                f"V {self.v}")
 
 
 @dataclass
@@ -224,8 +206,9 @@ def normalize_geoms_(
     volume_rotation
 ):
     xp = geometries.xp
-    shift_(geometries,
-           -(xp.asarray(volume_extent_min) + xp.asarray(volume_extent_max)) / 2)
+    shift_(
+        geometries,
+        -(xp.asarray(volume_extent_min) + xp.asarray(volume_extent_max)) / 2)
     scale_(geometries,
            xp.asarray(volume_voxel_size))
     rotate_(geometries, *volume_rotation)
@@ -268,17 +251,19 @@ def scale_(geom, scaling):
     # detector pixels have to be scaled first, because
     # detector.width and detector.height need to be scaled accordingly
     xp = geom.xp
-    pixel_vec = geom.u * geom.detector.pixel_width[..., xp.newaxis]  # still f32
-    pixel_vec /= scaling  # keeps dtype
+    pixel_vec = geom.u * geom.detector.pixel_width[..., xp.newaxis]
+    pixel_vec /= scaling
     geom.detector.pixel_width = xp.linalg.norm(pixel_vec, axis=-1)
-    xp.divide(pixel_vec, geom.detector.pixel_width[..., xp.newaxis],
+    xp.divide(pixel_vec,
+              geom.detector.pixel_width[..., xp.newaxis],
               out=geom.u)
 
     xp.multiply(geom.v, geom.detector.pixel_height[..., xp.newaxis],
                 out=pixel_vec)
     pixel_vec /= scaling
     geom.detector.pixel_height = xp.linalg.norm(pixel_vec, axis=-1)
-    xp.divide(pixel_vec, geom.detector.pixel_height[..., xp.newaxis],
+    xp.divide(pixel_vec,
+              geom.detector.pixel_height[..., xp.newaxis],
               out=geom.v)
     xp.divide(geom.tube_position, scaling, out=geom.tube_position)
     xp.divide(geom.detector_position, scaling, out=geom.detector_position)
@@ -306,9 +291,8 @@ def rotate_(geom,
     geom.v[...] = geom.v @ R
 
 
-def plot(geoms: dict):
+def plot(geoms):
     import matplotlib.pyplot as plt
-
     tubes_x = [g.tube_position[0] for g in geoms]
     tubes_y = [g.tube_position[1] for g in geoms]
     tubes_z = [g.tube_position[2] for g in geoms]
@@ -326,5 +310,4 @@ def plot(geoms: dict):
     # for g in geoms:
     #     ax.arrow3D(*g.tube_position, *g.u * g.detector.width)
     #     ax.arrow3D(*g.tube_position, *g.v * g.detector.height)
-
     plt.show()
