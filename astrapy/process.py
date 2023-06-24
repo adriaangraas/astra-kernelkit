@@ -128,9 +128,9 @@ def preweight(projections,
             "Arrays need to be all cupy or all numpy.")
         piercing_point = (g.detector_position if detector_piercings is None
                           else detector_piercings[i])
-        central_ray = np.linalg.norm(piercing_point - g.tube_position)
+        central_ray = np.linalg.norm(piercing_point - g.source_position)
         pixels = (xp.array(g.detector_extent_min)
                   + cols_view * xp.array(g.u * g.detector.pixel_width)
                   + rows_view * xp.array(g.v * g.detector.pixel_height))
-        pixel_rays = xp.linalg.norm(pixels - xp.array(g.tube_position), axis=2)
+        pixel_rays = xp.linalg.norm(pixels - xp.array(g.source_position), axis=2)
         p *= xp.divide(central_ray, pixel_rays)

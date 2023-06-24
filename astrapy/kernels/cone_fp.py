@@ -152,11 +152,11 @@ class ConeProjection(Kernel):
         # directions of ray for each projection (a number: 0, 1, 2)
         if geometries.xp == np:
             geom_axis = np.argmax(np.abs(
-                geometries.tube_position - geometries.detector_position),
+                geometries.source_position - geometries.detector_position),
                 axis=1)
         elif geometries.xp == cp:
             geom_axis = cp.argmax(cp.abs(
-                geometries.tube_position - geometries.detector_position),
+                geometries.source_position - geometries.detector_position),
                 axis=1, dtype=cp.int32).get()
         else:
             raise Exception("Geometry computation backend not understood.")
@@ -195,7 +195,7 @@ class ConeProjection(Kernel):
         """Transfer geometries to device as structure of arrays."""
         # TODO(Adriaan): maybe make a mapping between variables
         xp = geometries.xp
-        src = xp.ascontiguousarray(geometries.tube_position.T)
+        src = xp.ascontiguousarray(geometries.source_position.T)
         ext_min = xp.ascontiguousarray(geometries.detector_extent_min.T)
         u = xp.ascontiguousarray(
             geometries.u.T * geometries.detector.pixel_width)

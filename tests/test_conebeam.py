@@ -3,20 +3,16 @@ import itertools
 import cupy as cp
 import numpy as np
 import pytest
-
-from astrapy.geom import Detector
-from astrapy.kernel import copy_to_texture
-from astrapy.kernels import (Geometry, ConeBackprojection,
-                             ConeProjection)
+import astrapy as ap
 
 @pytest.fixture
 def fpkern():
-    return ConeProjection()
+    return ap.ConeProjection()
 
 
 @pytest.fixture
 def bpkern():
-    return ConeBackprojection()
+    return ap.ConeBackprojection()
 
 
 @pytest.fixture()
@@ -37,16 +33,16 @@ def volume(s1=10, s2=None, s3=None):
 
 def geom(rows=9,
          cols=9,
-         tube_dist=5.,
+         src_dist=5.,
          det_dist=5.,
          px_w=1.,
          px_h=1.):
-    return Geometry(
-        [-tube_dist, 0, 0],
+    return ap.Geometry(
+        [-src_dist, 0, 0],
         [det_dist, 0, 0],
         [0, 1, 0],
         [0, 0, 1],
-        Detector(rows, cols, px_w, px_h))
+        ap.Detector(rows, cols, px_w, px_h))
 
 
 @pytest.mark.parametrize(
@@ -61,7 +57,7 @@ def test_scaling_ray_integral_through_cube(
 ):
     vol, vol_shp = volume(vol_sz)
     vol.fill(vol_fill)
-    vol_txt = copy_to_texture(vol)
+    vol_txt = ap.copy_to_texture(vol)
     fpkern(
         volume_texture=vol_txt,
         volume_extent_min=np.array((-.5, -.5, -.5)) * vol_ext,
@@ -78,7 +74,7 @@ def test_scaling_ray_integral_through_cube(
     itertools.product((None, -1, 1, 13e7), (2 / 3, 1., .2), (10, 13, 21)))
 def test_matching_singleproj(fpkern, bpkern, vol_fill, vol_ext, vol_sz):
     rows, cols = 99, 144
-    geoms = geom(tube_dist=1., det_dist=20.,
+    geoms = geom(src_dist=1., det_dist=20.,
                  rows=rows, cols=cols,
                  px_w=0.50, px_h=.50)
     vol_shp = (100, 100, 100)
@@ -92,16 +88,18 @@ def test_matching_singleproj(fpkern, bpkern, vol_fill, vol_ext, vol_sz):
 
     g = cp.zeros((rows, cols), dtype=cp.float32)
     fpkern(
-        volume_texture=copy_to_texture(f),
+        volume_texture=ap.copy_to_texture(f),
         volume_extent_min=-ext,
         volume_extent_max=ext,
         geometries=[geoms],
         projections=[g])
 
     f2 = cp.zeros_like(f)
+    params = bpkern.geoms2params([geoms], vol_shp,
+                                 -ext, ext)
     bpkern(
-        projections_textures=[copy_to_texture(g)],
-        geometries=[geoms],
+        projections_textures=[ap.copy_to_texture(g)],
+        params=params,
         volume=f2,
         volume_extent_min=-ext,
         volume_extent_max=ext)

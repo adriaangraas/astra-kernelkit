@@ -33,12 +33,12 @@ class Geometry:
     ANGLES_CONVENTION = "sxyz"
 
     def __init__(self,
-                 tube_pos: Sequence,
+                 source_pos: Sequence,
                  det_pos: Sequence,
                  u_unit: Sequence,
                  v_unit: Sequence,
                  detector):
-        self.tube_position = np.array(tube_pos)
+        self.source_position = np.array(source_pos)
         self.detector_position = np.array(det_pos)
         self.detector = detector
         self.u = np.array(u_unit)
@@ -97,7 +97,7 @@ class Geometry:
         self.__v = value
 
     def __str__(self):
-        return (f"Tube {self.tube_position} "
+        return (f"Tube {self.source_position} "
                 f"Detector {self.detector_position}"
                 f"U {self.u}"
                 f"V {self.v}")
@@ -128,14 +128,14 @@ class GeometrySequence:
         def pixel_volume(self):
             return self.pixel_width * self.pixel_height
 
-    tube_position: xp.ndarray
+    source_position: xp.ndarray
     detector_position: xp.ndarray
     u: xp.ndarray
     v: xp.ndarray
     detector: DetectorSequence
 
     def __len__(self):
-        return len(self.tube_position)
+        return len(self.source_position)
 
     @property
     def detector_extent_min(self):
@@ -154,7 +154,7 @@ class GeometrySequence:
             pixel_width=_cvrt([g.detector.pixel_width for g in geometries]),
             pixel_height=_cvrt([g.detector.pixel_height for g in geometries]))
         gs = cls(
-            tube_position=_cvrt([g.tube_position for g in geometries]),
+            source_position=_cvrt([g.source_position for g in geometries]),
             detector_position=_cvrt([g.detector_position for g in geometries]),
             u=_cvrt([g.u for g in geometries]),
             v=_cvrt([g.v for g in geometries]),
@@ -169,7 +169,7 @@ class GeometrySequence:
             pixel_height=self.detector.pixel_height[indices]
         )
         gs = GeometrySequence(
-            tube_position=self.tube_position[indices],
+            source_position=self.source_position[indices],
             detector_position=self.detector_position[indices],
             u=self.u[indices],
             v=self.v[indices],
@@ -182,7 +182,7 @@ class GeometrySequence:
     def __deepcopy__(self, memodict={}):
         xp = self.xp
         obj = self.__class__(
-            tube_position=xp.copy(self.tube_position),
+            source_position=xp.copy(self.source_position),
             detector_position=xp.copy(self.detector_position),
             u=xp.copy(self.u),
             v=xp.copy(self.v),
@@ -216,13 +216,13 @@ def normalize_geoms_(
 
 def shift(geom, shift_vector):
     geom = copy.deepcopy(geom)
-    geom.tube_position += shift_vector
+    geom.source_position += shift_vector
     geom.detector_position += shift_vector
     return geom
 
 
 def shift_(geom, shift_vector: np.ndarray):
-    geom.tube_position += shift_vector
+    geom.source_position += shift_vector
     geom.detector_position += shift_vector
 
 
@@ -242,7 +242,7 @@ def scale(geom, scaling: np.ndarray):
     geom.detector.pixel_height = new_pixel_height
     geom.v = new_v_unit
 
-    geom.tube_position[:] = geom.tube_position[:] / scaling
+    geom.source_position[:] = geom.source_position[:] / scaling
     geom.detector_position[:] = geom.detector_position[:] / scaling
     return geom
 
@@ -265,7 +265,7 @@ def scale_(geom, scaling):
     xp.divide(pixel_vec,
               geom.detector.pixel_height[..., xp.newaxis],
               out=geom.v)
-    xp.divide(geom.tube_position, scaling, out=geom.tube_position)
+    xp.divide(geom.source_position, scaling, out=geom.source_position)
     xp.divide(geom.detector_position, scaling, out=geom.detector_position)
 
 
@@ -273,7 +273,7 @@ def rotate(geom,
            roll: float = 0., pitch: float = 0., yaw: float = 0.):
     ngeom = copy.deepcopy(geom)
     RT = Geometry.angles2mat(roll, pitch, yaw).T
-    ngeom.tube_position = RT @ geom.tube_position
+    ngeom.source_position = RT @ geom.source_position
     ngeom.detector_position = RT @ geom.detector_position
     ngeom.u = RT @ geom.u
     ngeom.v = RT @ geom.v
@@ -283,9 +283,9 @@ def rotate(geom,
 def rotate_(geom,
             roll: float = 0., pitch: float = 0., yaw: float = 0.):
     xp = geom.xp
-    dtype = geom.tube_position.dtype
+    dtype = geom.source_position.dtype
     R = xp.asarray(Geometry.angles2mat(roll, pitch, yaw), dtype=dtype)
-    geom.tube_position[...] = geom.tube_position @ R
+    geom.source_position[...] = geom.source_position @ R
     geom.detector_position[...] = geom.detector_position @ R
     geom.u[...] = geom.u @ R
     geom.v[...] = geom.v @ R
@@ -293,9 +293,9 @@ def rotate_(geom,
 
 def plot(geoms):
     import matplotlib.pyplot as plt
-    tubes_x = [g.tube_position[0] for g in geoms]
-    tubes_y = [g.tube_position[1] for g in geoms]
-    tubes_z = [g.tube_position[2] for g in geoms]
+    srcs_x = [g.source_position[0] for g in geoms]
+    srcs_y = [g.source_position[1] for g in geoms]
+    srcs_z = [g.source_position[2] for g in geoms]
     dets_x = [g.detector_position[0] for g in geoms]
     dets_y = [g.detector_position[1] for g in geoms]
     dets_z = [g.detector_position[2] for g in geoms]
@@ -305,9 +305,9 @@ def plot(geoms):
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_zlabel('z')
-    ax.scatter(tubes_x, tubes_y, tubes_z, marker='*')
+    ax.scatter(srcs_x, srcs_y, srcs_z, marker='*')
     ax.scatter(dets_x, dets_y, dets_z, marker='o')
     # for g in geoms:
-    #     ax.arrow3D(*g.tube_position, *g.u * g.detector.width)
-    #     ax.arrow3D(*g.tube_position, *g.v * g.detector.height)
+    #     ax.arrow3D(*g.source_position, *g.u * g.detector.width)
+    #     ax.arrow3D(*g.source_position, *g.v * g.detector.height)
     plt.show()

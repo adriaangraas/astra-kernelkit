@@ -158,7 +158,7 @@ class ConeBackprojection(Kernel):
 
         u = geometries.u * geometries.detector.pixel_width[..., xp.newaxis]
         v = geometries.v * geometries.detector.pixel_height[..., xp.newaxis]
-        s = geometries.tube_position
+        s = geometries.source_position
         d = geometries.detector_extent_min
 
         # NB(ASTRA): for cross(u,v) we invert the volume scaling (for the voxel

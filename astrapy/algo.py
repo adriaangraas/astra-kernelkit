@@ -17,8 +17,8 @@ def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):
     ap.shift_(cg, -np.array(object_position))
 
     # assert that origin is on the source-detector line
-    source_vec = cg.tube_position
-    det_vec = cg.detector_position - cg.tube_position
+    source_vec = cg.source_position
+    det_vec = cg.detector_position - cg.source_position
     if not np.linalg.matrix_rank([source_vec, det_vec]) == 1:
         warnings.warn("Volume extents may not be suggested correctly when "
                       " the geometry does not project through the origin.")
@@ -319,8 +319,7 @@ def _conebackprojection(
             geometries,
             out.shape,
             volume_extent_min,
-            volume_extent_max,
-            fdk_weighting=False)
+            volume_extent_max)
         kernel(
             projs_txt,
             params,

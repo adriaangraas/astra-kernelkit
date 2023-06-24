@@ -1,3 +1,5 @@
+import numpy as np
+
 class FanProjection(Kernel):
     """Fanbeam forward projection"""
     ANGLES_PER_BLOCK = 16
@@ -81,7 +83,7 @@ class FanProjection(Kernel):
             vectors.append(
                 [*left_detector_position,
                  *det_direction,
-                 *geom.tube_position])
+                 *geom.source_position])
 
         # upload angles to GPU
         # plot_geoms = {i: g for i, g in geometry.items() if i < 100 and i % 10 == 0}
@@ -234,12 +236,12 @@ class FanBackprojection(Kernel):
             # then shift to the center of the geom?
             dx = -(volume.extent_min[0] + volume.extent_max[0]) / 2
             dy = -(volume.extent_min[1] + volume.extent_max[1]) / 2
-            ngeom.tube_position[:] = ngeom.tube_position + [dx, dy]
+            ngeom.source_position[:] = ngeom.source_position + [dx, dy]
             ngeom.detector_position[:] = ngeom.detector_position + [dx, dy]
 
             # scale appropriately
             s = 1. / output_scale
-            ngeom.tube_position[:] = s * ngeom.tube_position[:]
+            ngeom.source_position[:] = s * ngeom.source_position[:]
             ngeom.detector_position[:] = s * ngeom.detector_position[:]
             ngeom.detector.pixel_width = s * ngeom.detector.pixel_width
 
@@ -337,7 +339,7 @@ class FanBackprojection(Kernel):
 
         fan_params = []
         for geom in geoms:
-            tube = geom.tube_position
+            src = geom.source_position
             detector = geom.detector_position
             pixel_vector = geom.u * geom.detector.pixel_width
 
@@ -347,14 +349,14 @@ class FanBackprojection(Kernel):
             # scale = 1.0 / det(u, s)
             scale = (
                 np.linalg.norm(pixel_vector) /
-                np.linalg.det((pixel_vector, tube - detector))
+                np.linalg.det((pixel_vector, src - detector))
             )
 
             p = _Param(
-                num_c=scale * np.linalg.det((tube, detector)),
-                num_x=scale * (tube - detector)[1],
-                num_y=-scale * (tube - detector)[0],
-                den_c=scale * np.linalg.det((pixel_vector, tube)),
+                num_c=scale * np.linalg.det((src, detector)),
+                num_x=scale * (src - detector)[1],
+                num_y=-scale * (src - detector)[0],
+                den_c=scale * np.linalg.det((pixel_vector, src)),
                 den_x=scale * pixel_vector[1],
                 den_y=-scale * pixel_vector[0]
             )
