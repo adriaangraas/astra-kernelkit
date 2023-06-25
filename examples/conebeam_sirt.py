@@ -5,7 +5,7 @@ import astrapy as ap
 # geometry spinning
 geom_t0 = ap.Geometry(
     [-10, 0., 0.],
-    [20, 0., 0.],
+    [10, 0., 0.],
     [0, 1, 0],
     [0, 0, 1],
     ap.Detector(99, 141, .01, .01))
@@ -30,11 +30,17 @@ for p in projs[0:100:4]:
     plt.pause(.001)
 plt.close()
 
-vol2 = ap.sirt_experimental(projs, geoms, vol.shape, vol_min, vol_max,
-                         iters=200)
+vol2 = ap.sirt(
+    projs,
+    geoms,
+    vol.shape,
+    vol_min,
+    vol_max,
+    iters=200)
+
 plt.figure()
 for sl in range(25, vol2.shape[-1]):
     plt.cla()
-    plt.imshow(vol2[..., sl], vmin=0, vmax=2.)
-    plt.pause(.001)
+    plt.imshow(vol2[..., sl], vmin=0, vmax=1.5)
+    plt.pause(.1)
 plt.close()

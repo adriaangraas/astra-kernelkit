@@ -219,143 +219,12 @@ def vol_params(
     return tuple(shp), tuple(ext_min), tuple(ext_max), tuple(vox_sz)
 
 
-def _coneprojection(
-    kernel: ap.ConeProjection,
-    volume,
-    volume_extent_min,
-    volume_extent_max,
-    geometries: Sequence,
-    chunk_size: int = None,
-    out: list = None,
-    out_shapes: list = None,
-    dtype=cp.float32,
-    verbose=True,
-    **kwargs):
-    """
-    Allocates GPU memory for only `chunk_size` projection images, then
-    repeats the kernel call into the same GPU memory.
-
-    :param kernel:
-    :param chunk_size:
-    :param geometries:
-    :param kwargs:
-    """
-    volume_texture = ap.copy_to_texture(volume)
-
-    if out is None:
-        assert chunk_size > 0
-        with cp.cuda.stream.Stream():
-            for start_proj in tqdm(range(0, len(geometries), chunk_size),
-                                   desc="Forward projecting",
-                                   disable=not verbose):
-                next_proj = min(start_proj + chunk_size, len(geometries))
-                sub_geoms = geometries[start_proj:next_proj]
-
-                if out is not None and out_shapes is None:
-                    projs_gpu = out[start_proj:next_proj]
-                    [p.fill(0.) for p in projs_gpu]
-                elif out_shapes is not None and out is None:
-                    projs_gpu = [cp.zeros(out_shapes[i], dtype=dtype)
-                                 for i in range(start_proj, next_proj)]
-                else:
-                    raise ValueError("Provide either `out` or `out_shapes`")
-
-                kernel(volume_texture,
-                       volume_extent_min,
-                       volume_extent_max,
-                       sub_geoms,
-                       projs_gpu)
-
-                yield projs_gpu
-    else:
-        assert chunk_size is None, "No need for chunk size!"
-        [p.fill(0.) for p in out]
-        kernel(volume_texture,
-               volume_extent_min,
-               volume_extent_max,
-               geometries,
-               out)
-
-    return out
-
-
-def _conebackprojection(
-    kernel: ap.ConeBackprojection,
-    projections: Sequence,
-    geometries: Sequence,
-    volume_extent_min,
-    volume_extent_max,
-    out,
-    chunk_size: int = None,
-    filter: Any = None,
-    preproc_fn: Callable = None,
-    texture_type='array',
-    verbose=True,
-    **kwargs):
-    """
-    If one of the `projections` is on CPU, use `chunk_size` to upload, process,
-    compute, and download projections in batches. Alternatively, if `projections`
-    lives on the GPU, compute all as a whole.
-    """
-
-    def _preproc_to_texture(projs, geoms):
-        if texture_type.lower() == 'pitch2d':
-            projs = [ap.aspitched(p, cp) for p in projs]
-        else:
-            projs = cp.asarray(projs)
-            
-        if preproc_fn is not None:
-            preproc_fn(projs)
-        if filter is not None:
-            ap.preweight(projs, geoms)
-            ap.filter(projs, filter=filter)
-
-        if texture_type.lower() == 'pitch2d':
-            return [ap.copy_to_texture(p, texture_type) for p in projs]
-        else:
-            return ap.copy_to_texture(projs, texture_type)
-
-    def _compute(projs_txt, geometries):
-        params = kernel.geoms2params(
-            geometries,
-            out.shape,
-            volume_extent_min,
-            volume_extent_max)
-        kernel(
-            projs_txt,
-            params,
-            out,
-            volume_extent_min,
-            volume_extent_max)
-
-    # run chunk-based algorithm if one or more projections are on CPU
-    with cp.cuda.stream.Stream():
-        if chunk_size is None:
-            blocks = range(0, 1)
-            chunk_size = len(geometries)
-        else:
-            blocks = range(0, len(geometries), chunk_size)
-
-        for start in tqdm(blocks, desc="Backprojecting", disable=not verbose):
-            end = min(start + chunk_size, len(geometries))
-            sub_geoms = geometries[start:end]
-            sub_projs = projections[start:end]
-            projs_txt = _preproc_to_texture(sub_projs, sub_geoms)
-            _compute(projs_txt, sub_geoms)
-            yield out
-
-    # TODO(Adriaan): priority, make sure this does not invoke a copy
-    out[...] = cp.reshape(out, tuple(reversed(out.shape))).T
-    return out
-
-
 def fp(
     volume: Any,
     geometry: Any,
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     volume_voxel_size: Sequence = None,
-    chunk_size: int = 100,
     out: Sized = None,
     kernel: ap.Kernel = None,
     **kwargs):
@@ -375,35 +244,17 @@ def fp(
         upload and launch a kernel for each consecutive chunk of `sinogram`
         and `geometry`.
     """
-    if out is None:
-        out = []
-        for g in geometry:
-            d = np.zeros((g.detector.rows, g.detector.cols), dtype=np.float32)
-            out.append(d)
-
     _, vol_ext_min, vol_ext_max, _ = vol_params(
-        volume.shape,
-        volume_extent_min,
-        volume_extent_max,
-        volume_voxel_size,
-        geometry,
-    )
-
-    if kernel is None:
-        kernel = ap.ConeProjection()
-
+        volume.shape, volume_extent_min, volume_extent_max,
+        volume_voxel_size, geometry)
     ptor = ap.ConeProjector(
-        kernel,
-        volume=volume.astype(np.float32),
-        volume_extent_min=vol_ext_min,
-        volume_extent_max=vol_ext_max,
-        chunk_size=chunk_size,
-        geometries=geometry,
-        out_shapes=[p.shape for p in out],
+        ap.ConeProjection() if kernel is None else kernel,
+        volume_extent_min=np.asarray(vol_ext_min),
+        volume_extent_max=np.asarray(vol_ext_max),
         **kwargs)
     ptor.volume = volume.astype(np.float32)
+    ptor.geometry = geometry
     result = ptor(out)
-
     return result.get() if out is None else out
 
 
@@ -414,10 +265,8 @@ def bp(
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     volume_voxel_size: Sequence = None,
-    chunk_size: int = None,
     filter: Any = None,
     preproc_fn: Callable = None,
-    return_gpu: bool = False,
     verbose: bool = False,
     kernel: ap.Kernel = None,
     out: cp.ndarray = None,
@@ -442,38 +291,20 @@ def bp(
         and `geometry`.
 
     """
-    if len(projections) != len(geometry):
-        raise ValueError
-
     vol_shp, vol_ext_min, vol_ext_max, _ = vol_params(
         volume_shape, volume_extent_min, volume_extent_max,
         volume_voxel_size, geometry, verbose=verbose)
-    vol_shp = np.asarray(vol_shp)
-    vol_ext_min = np.asarray(vol_ext_min)
-    vol_ext_max = np.asarray(vol_ext_max)
-
-    if out is None:
-        volume_gpu = cp.empty(vol_shp, dtype=cp.float32)
-    else:
-        volume_gpu = out
-
-    if kernel is None:
-        kernel = ap.ConeBackprojection()
-
     ptor = ConeBackprojector(
-        kernel,
-        volume_shape=vol_shp,
-        volume_extent_min=vol_ext_min,
-        volume_extent_max=vol_ext_max,
-        out=volume_gpu,
-        chunk_size=chunk_size,
+        ap.ConeBackprojection() if kernel is None else kernel,
+        volume_shape=np.asarray(vol_shp),
+        volume_extent_min=np.asarray(vol_ext_min),
+        volume_extent_max=np.asarray(vol_ext_max),
         filter=filter,
         preproc_fn=preproc_fn,
         verbose=verbose,
         **kwargs)
     ptor.geometry = geometry
     ptor.projections = projections
-
     result = ptor(out)
     return result.get() if out is None else out
 
@@ -485,55 +316,40 @@ def fdk(
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     volume_voxel_size: Sequence = None,
-    chunk_size: int = 100,
     filter: Any = 'ramlak',
     preproc_fn: Callable = None,
     **kwargs):
     """Feldkamp-Davis-Kress algorithm"""
 
-    # note: calling bp with filter
     return bp(projections,
               geometry,
               volume_shape,
               volume_extent_min,
               volume_extent_max,
               volume_voxel_size,
-              chunk_size,
-              filter=filter,
+              filter=filter,  # just bp with filter
               preproc_fn=preproc_fn,
               **kwargs)
 
 
-def sirt_experimental(
+def sirt(
     projections: np.ndarray,
     geometry: Any,
     volume_shape: Sequence,
     volume_extent_min: Sequence = None,
     volume_extent_max: Sequence = None,
     volume_voxel_size: Sequence = None,
-    preproc_fn: Callable = None,
     iters: int = 100,
     dtype=cp.float32,
     verbose: bool = True,
     mask: Any = None,
     proj_mask: Any = True,
-    x_0: Any = None,
     min_constraint: float = None,
     max_constraint: float = None,
     return_gpu: bool = False,
-    chunk_size=300,
     algo='gpu',
-    callback: callable=None):
+    callback: callable = None):
     """Simulateneous Iterative Reconstruction Technique
-
-    TODO(Adriaan): There is a bug with using aspitched() and `pitch2d`
-        memory allocation, which might be faster than Z-array texture. The
-        bug is reproduced with a non-pitch detector dimension and the
-        `aspitched` lines below uncommented. Use plotting to see weird
-        backprojection residual that is probably the cause of the
-        some miscomputation on wrong dimensions. For now I will use
-        CUDAarray which takes a bit more memory which is also ASTRA's
-        way.
 
     :param proj_mask: If `None` doesn't use one, unless `mask` is given,
         then it generates the appropriate one.
@@ -549,10 +365,8 @@ def sirt_experimental(
 
     if algo == 'cpu':
         xp_proj = np
-        op_kwargs = {'verbose': verbose, 'chunk_size': chunk_size}
     elif algo == 'gpu':
         xp_proj = cp
-        op_kwargs = {'verbose': verbose}
     else:
         raise ValueError
 
@@ -560,22 +374,22 @@ def sirt_experimental(
 
     # prevent copying if already in GPU memory, otherwise copy to GPU
     y = [xp_proj.array(p, copy=False) for p in projections]
-
-    if x_0 is not None:
-        x = xp_vol.asarray(x_0, dtype)
-    else:
-        x = xp_vol.zeros(vol_shp, dtype)  # output volume
-
+    x = xp_vol.zeros(vol_shp, dtype)  # output volume
     x_tmp = xp_vol.ones_like(x)
+    fptor = ConeProjector(ap.ConeProjection(), volume_extent_min,
+                          volume_extent_max, verbose=verbose)
+    fptor.geometry = geometry
+    bptor = ConeBackprojector(ap.ConeBackprojection(), vol_shp,
+                              vol_ext_min, vol_ext_max, verbose=verbose)
+    bptor.geometry = geometry
 
-    if preproc_fn is not None:
-        preproc_fn(y)
+    def A(x):
+        fptor.volume = x
+        return fptor()
 
-    prj_shps = [p.shape for p in projections]
-    A = _A(kernels.ConeProjection(), vol_ext_min, vol_ext_max, geometry,
-           prj_shps, xp_out=xp_proj, **op_kwargs)
-    A_T = _A_T(kernels.ConeBackprojection(), vol_ext_min, vol_ext_max, geometry,
-               vol_shp, xp_out=xp_vol, **op_kwargs)
+    def A_T(y):
+        bptor.projections = y
+        return bptor()
 
     if mask is not None:
         mask = xp_vol.asarray(mask, dtype)
@@ -604,7 +418,7 @@ def sirt_experimental(
         p[p == xp_proj.infty] = 0.
     cp.get_default_memory_pool().free_all_blocks()
 
-    bar = tqdm(range(iters), disable=not verbose, desc="SIRT (starting...)")
+    bar = tqdm(range(iters), disable=not verbose, desc="SIRT")
     for i in bar:
         # Note, not using `out`: `y_tmp` is not recycled because it would
         # require `y_tmp` and its texture counterpart to be in memory at
@@ -619,9 +433,11 @@ def sirt_experimental(
             p_tmp -= p  # residual
             p_tmp *= r
 
-        if i % 10 == 0:  # this operation is expensive
+        E = 10  # compute residual norm every `E`
+        if i % E == 0:  # this operation is expensive
             res_norm = str(sum([xp_proj.linalg.norm(p) for p in y_tmp]))
-        bar.set_description(f"SIRT (update in {10 - i % 10}): {res_norm})")
+        desc = 'SIRT [' + '*' * (i % E) + '.' * (E - i % E) + ']'
+        bar.set_description(f"{desc}: {res_norm})")
 
         # backproject residual into `x_tmp`, apply C
         x_tmp = A_T(y_tmp)
@@ -630,14 +446,10 @@ def sirt_experimental(
         if mask is not None:
             x *= mask
         if min_constraint is not None or max_constraint is not None:
-            xp_vol.clip(x, a_min=min_constraint, a_max=max_constraint, out=x)
-
+            cp.clip(x, a_min=min_constraint, a_max=max_constraint, out=x)
         if callback is not None:
             callback(i, x, y_tmp)
-
         cp.get_default_memory_pool().free_all_blocks()
 
     if xp_vol == cp and not return_gpu:
         return x.get()
-
-    return x

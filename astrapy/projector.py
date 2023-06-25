@@ -10,7 +10,6 @@ class ConeProjector:
                  kernel: ap.ConeProjection,
                  volume_extent_min,
                  volume_extent_max,
-                 geometries: Sequence,
                  dtype=cp.float32,
                  verbose=True):
         """
@@ -28,7 +27,6 @@ class ConeProjector:
         self._ext_max = volume_extent_max
         self._dtype = dtype
         self._verbose = verbose
-        self.geometry = geometries
         self._volume = None
 
     @property
