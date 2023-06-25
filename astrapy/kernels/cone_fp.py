@@ -16,7 +16,7 @@ class ConeProjection(Kernel):
                  pixels_per_thread: int = None,
                  pixels_in_x_block: int = None,
                  projs_row_major: bool = True,
-                 mode_row: bool = False,
+                 mode_row: bool = True,
                  *args):
         self._slices_per_thread = (
             slices_per_thread if slices_per_thread is not None
@@ -29,6 +29,9 @@ class ConeProjection(Kernel):
             else self.PIXELS_IN_X_BLOCK)
         self._projs_row_major = projs_row_major
         self._mode_row = mode_row
+        if self._mode_row is False:
+            raise NotImplementedError("This implementation is not yet working"
+                                      " as expected.")
         super().__init__('cone_fp.cu', *args)
 
     def _get_names(self):
