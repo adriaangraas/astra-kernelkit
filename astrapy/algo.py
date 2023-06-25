@@ -7,6 +7,7 @@ import cupy as cp
 import numpy as np
 from tqdm import tqdm
 import astrapy as ap
+from astrapy.projector import ConeProjector, ConeBackprojector
 
 
 def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):
@@ -391,7 +392,7 @@ def fp(
     if kernel is None:
         kernel = ap.ConeProjection()
 
-    executor = _coneprojection(
+    ptor = ap.ConeProjector(
         kernel,
         volume=volume.astype(np.float32),
         volume_extent_min=vol_ext_min,
@@ -400,40 +401,10 @@ def fp(
         geometries=geometry,
         out_shapes=[p.shape for p in out],
         **kwargs)
+    ptor.volume = volume.astype(np.float32)
+    result = ptor(out)
 
-    i = 0
-    for batch in tqdm(executor):
-        for p in batch:
-            out[i][...] = p.get()
-            i += 1
-
-    return out
-
-
-def fdk(
-    projections: Any,
-    geometry: Any,
-    volume_shape: Sequence,
-    volume_extent_min: Sequence = None,
-    volume_extent_max: Sequence = None,
-    volume_voxel_size: Sequence = None,
-    chunk_size: int = 100,
-    filter: Any = 'ramlak',
-    preproc_fn: Callable = None,
-    **kwargs):
-    """Feldkamp-Davis-Kress algorithm"""
-
-    # note: calling bp with filter
-    return bp(projections,
-              geometry,
-              volume_shape,
-              volume_extent_min,
-              volume_extent_max,
-              volume_voxel_size,
-              chunk_size,
-              filter=filter,
-              preproc_fn=preproc_fn,
-              **kwargs)
+    return result.get() if out is None else out
 
 
 def bp(
@@ -489,10 +460,9 @@ def bp(
     if kernel is None:
         kernel = ap.ConeBackprojection()
 
-    executor = _conebackprojection(
+    ptor = ConeBackprojector(
         kernel,
-        projections=projections,
-        geometries=geometry,
+        volume_shape=vol_shp,
         volume_extent_min=vol_ext_min,
         volume_extent_max=vol_ext_max,
         out=volume_gpu,
@@ -501,145 +471,37 @@ def bp(
         preproc_fn=preproc_fn,
         verbose=verbose,
         **kwargs)
+    ptor.geometry = geometry
+    ptor.projections = projections
 
-    for volume_gpu in tqdm(executor, disable=not verbose):
-        pass
-
-    if return_gpu:
-        return volume_gpu
-
-    return volume_gpu.get()
+    result = ptor(out)
+    return result.get() if out is None else out
 
 
-class _A:
-    def __init__(self,
-                 fpkern: ap.ConeProjection,
-                 vol_ext_min,
-                 vol_ext_max,
-                 geometry,
-                 out_shapes,
-                 chunk_size=None,
-                 xp_out=cp,
-                 dtype=cp.float32,
-                 verbose=False):
-        self.fpk = fpkern
-        self.vol_ext_min = vol_ext_min
-        self.vol_ext_max = vol_ext_max
-        self.geometry = GeometrySequence.fromList(geometry)
-        self.out_shapes = out_shapes
-        self.xp = xp_out
-        self.dtype = dtype
-        self.chunk_size = chunk_size
-        self.verbose = verbose
+def fdk(
+    projections: Any,
+    geometry: Any,
+    volume_shape: Sequence,
+    volume_extent_min: Sequence = None,
+    volume_extent_max: Sequence = None,
+    volume_voxel_size: Sequence = None,
+    chunk_size: int = 100,
+    filter: Any = 'ramlak',
+    preproc_fn: Callable = None,
+    **kwargs):
+    """Feldkamp-Davis-Kress algorithm"""
 
-    def __call__(self, x, out=None):
-        """
-        Out not given:
-            xp = np: make xp array, call with None, draw output in new array
-            xp = cp: make xp array, call with xp array, draw no output
-        Out given:
-            out np: call with None, draw output in given array
-            out cp: call with given array, return
-        :param x:
-        :param out:
-        :return:
-        """
-        if out is None:
-            # out = [aspitched(cp.zeros_like(p)) for p in y]
-            out = [self.xp.zeros(shp, dtype=self.dtype) for shp in
-                   self.out_shapes]
-        # else:
-        #     for p in out:
-        #         p.fill(0.)
-
-        exc = _coneprojection(
-            self.fpk,
-            x,
-            self.vol_ext_min,
-            self.vol_ext_max,
-            chunk_size=self.chunk_size,
-            geometries=self.geometry,
-            out=out if self.xp == cp else None,
-            out_shapes=self.out_shapes if self.xp == np else None,
-            dtype=self.dtype,
-            verbose=self.verbose)
-
-        i = 0
-        for out_projs in exc:
-            for q in out_projs:
-                if cp.get_array_module(out[i]) == np:
-                    out[i][...] = q.get()
-                i += 1
-
-        # self.fpk.__call__(
-        #     _to_texture(x),
-        #     self.vol_ext_min,
-        #     self.vol_ext_max,
-        #     self.geometry,
-        #     out,
-        # )
-
-        return out
-
-
-class _A_T:
-    def __init__(self, bpkern: ConeBackprojection,
-                 vol_ext_min, vol_ext_max, geometry,
-                 out_shape, chunk_size=None, xp_out=cp, dtype=cp.float32,
-                 verbose=False):
-        self.bpk = bpkern
-        self.vol_ext_min = vol_ext_min
-        self.vol_ext_max = vol_ext_max
-        self.geometry = GeometrySequence.fromList(geometry)
-        self.out_shape = out_shape
-        self.xp = xp_out
-        self.dtype = dtype
-        self.chunk_size = chunk_size
-        self.verbose = verbose
-
-    def __call__(self, y, out=None):
-        """
-        Out given, GPU     : produce in out
-        Out given, CPU     : cp create array, use .get()
-        Out not given, GPU : cp create array, return that
-        Out not given, CPU : cp create array, np create array, .get()
-        """
-        if out is not None:
-            if cp.get_array_module(out) == np:
-                gpu_out = cp.zeros(out.shape, self.dtype)
-            else:
-                gpu_out = out
-        else:
-            gpu_out = cp.zeros(self.out_shape, self.dtype)
-
-        # y_txt = [_to_texture(p) for p in y]
-        # y_txt = []
-        # for p in y:  # synchronous convertion to texture and deleteion
-        #     y_txt += [_to_texture(p)]
-        #     del p
-        #
-        # del y  # just in case
-
-        exc = _conebackprojection(
-            self.bpk,
-            y,
-            self.geometry,
-            self.vol_ext_min,
-            self.vol_ext_max,
-            gpu_out,
-            chunk_size=self.chunk_size,
-            dtype=self.dtype,
-            verbose=self.verbose)
-
-        for _ in exc:
-            pass
-
-        if self.xp == cp:
-            out = gpu_out
-        else:
-            out = gpu_out.get()
-
-        return out
+    # note: calling bp with filter
+    return bp(projections,
+              geometry,
+              volume_shape,
+              volume_extent_min,
+              volume_extent_max,
+              volume_voxel_size,
+              chunk_size,
+              filter=filter,
+              preproc_fn=preproc_fn,
+              **kwargs)
 
 
 def sirt_experimental(
