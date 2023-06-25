@@ -19,7 +19,7 @@ _texture_desc_2d = txt.TextureDescriptor(
     cudaFilterModeLinear,  # filter modebase = {NoneType} None
     cudaReadModeElementType)
 _texture_desc_3d = txt.TextureDescriptor(
-    [cudaAddressModeBorder] * 2,  # array.ndim,
+    [cudaAddressModeBorder] * 3,  # array.ndim,
     cudaFilterModeLinear,  # filter modebase = {NoneType} None
     cudaReadModeElementType)
 _channel_desc = txt.ChannelFormatDescriptor(
