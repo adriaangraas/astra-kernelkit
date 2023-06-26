@@ -2,6 +2,7 @@ import copy
 from dataclasses import dataclass
 from typing import List, Sequence
 import numpy as np
+import cupy as cp
 import transforms3d
 
 
@@ -118,11 +119,15 @@ class GeometrySequence:
 
         @property
         def height(self):
-            return self.pixel_height * self.rows
+            arr = self.xp.empty_like(self.pixel_height)  # preserve dtype
+            self.xp.multiply(self.pixel_height, self.rows, out=arr)
+            return arr
 
         @property
         def width(self):
-            return self.pixel_width * self.cols
+            arr = self.xp.empty_like(self.pixel_width)  # preserve dtype
+            self.xp.multiply(self.pixel_width, self.cols, out=arr)
+            return arr
 
         @property
         def pixel_volume(self):
@@ -145,19 +150,23 @@ class GeometrySequence:
 
     @classmethod
     def fromList(cls, geometries: List[Geometry]):
-        _cvrt = lambda arr: cls.xp.ascontiguousarray(
-            cls.xp.array(arr, dtype=cls.xp.float32))
+        _cvrt = lambda arr, dtype: cls.xp.ascontiguousarray(
+            cls.xp.array(arr, dtype=dtype))
 
         ds = cls.DetectorSequence(
-            rows=_cvrt([g.detector.rows for g in geometries]),
-            cols=_cvrt([g.detector.cols for g in geometries]),
-            pixel_width=_cvrt([g.detector.pixel_width for g in geometries]),
-            pixel_height=_cvrt([g.detector.pixel_height for g in geometries]))
+            rows=_cvrt([g.detector.rows for g in geometries], cls.xp.int32),
+            cols=_cvrt([g.detector.cols for g in geometries], cls.xp.int32),
+            pixel_width=_cvrt([g.detector.pixel_width for g in geometries],
+                              cls.xp.float32),
+            pixel_height=_cvrt([g.detector.pixel_height for g in geometries],
+                               cls.xp.float32))
         gs = cls(
-            source_position=_cvrt([g.source_position for g in geometries]),
-            detector_position=_cvrt([g.detector_position for g in geometries]),
-            u=_cvrt([g.u for g in geometries]),
-            v=_cvrt([g.v for g in geometries]),
+            source_position=_cvrt([g.source_position for g in geometries],
+                                  cls.xp.float32),
+            detector_position=_cvrt([g.detector_position for g in geometries],
+                                    cls.xp.float32),
+            u=_cvrt([g.u for g in geometries], cls.xp.float32),
+            v=_cvrt([g.v for g in geometries], cls.xp.float32),
             detector=ds)
         return gs
 
