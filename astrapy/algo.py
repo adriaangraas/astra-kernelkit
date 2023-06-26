@@ -7,7 +7,9 @@ import cupy as cp
 import numpy as np
 from tqdm import tqdm
 import astrapy as ap
-from astrapy.projector import ConeProjector, ConeBackprojector
+from astrapy.projector import AstraCompatConeBackprojector, \
+    AstraCompatConeProjector, ConeProjector, \
+    ConeBackprojector
 
 
 def suggest_volume_extent(geometry, object_position: Sequence = (0., 0., 0.)):
@@ -247,14 +249,10 @@ def fp(
     _, vol_ext_min, vol_ext_max, _ = vol_params(
         volume.shape, volume_extent_min, volume_extent_max,
         volume_voxel_size, geometry)
-    ptor = ap.ConeProjector(
-        ap.ConeProjection() if kernel is None else kernel,
-        volume_extent_min=np.asarray(vol_ext_min),
-        volume_extent_max=np.asarray(vol_ext_max),
-        **kwargs)
+    ptor = ap.ConeProjector(ap.ConeProjection() if kernel is None else kernel)
     ptor.volume = volume.astype(np.float32)
     ptor.geometry = geometry
-    result = ptor(out)
+    result = ptor(vol_ext_min, vol_ext_max, out)
     return result.get() if out is None else out
 
 
@@ -296,16 +294,16 @@ def bp(
         volume_voxel_size, geometry, verbose=verbose)
     ptor = ConeBackprojector(
         ap.ConeBackprojection() if kernel is None else kernel,
-        volume_shape=np.asarray(vol_shp),
-        volume_extent_min=np.asarray(vol_ext_min),
-        volume_extent_max=np.asarray(vol_ext_max),
         filter=filter,
         preproc_fn=preproc_fn,
         verbose=verbose,
         **kwargs)
     ptor.geometry = geometry
     ptor.projections = projections
-    result = ptor(out)
+    result = ptor(volume_shape=np.asarray(vol_shp),
+                  volume_extent_min=np.asarray(vol_ext_min),
+                  volume_extent_max=np.asarray(vol_ext_max),
+                  out=out)
     return result.get() if out is None else out
 
 
@@ -376,20 +374,19 @@ def sirt(
     y = [xp_proj.array(p, copy=False) for p in projections]
     x = xp_vol.zeros(vol_shp, dtype)  # output volume
     x_tmp = xp_vol.ones_like(x)
-    fptor = ConeProjector(ap.ConeProjection(), volume_extent_min,
-                          volume_extent_max, verbose=verbose)
+    fptor = ConeProjector()
     fptor.geometry = geometry
-    bptor = ConeBackprojector(ap.ConeBackprojection(), vol_shp,
-                              vol_ext_min, vol_ext_max, verbose=verbose)
+    bptor = ConeBackprojector()
     bptor.geometry = geometry
 
-    def A(x):
+    def A(x, out=None):
         fptor.volume = x
-        return fptor()
+        return fptor(volume_extent_min, volume_extent_max, out=out)
 
-    def A_T(y):
+    def A_T(y, out=None):
         bptor.projections = y
-        return bptor()
+        return bptor(volume_extent_min, volume_extent_max,
+                     volume_shape=vol_shp if out is None else None, out=out)
 
     if mask is not None:
         mask = xp_vol.asarray(mask, dtype)
@@ -424,9 +421,8 @@ def sirt(
         # require `y_tmp` and its texture counterpart to be in memory at
         # the same time. We take the memory-friendly and slightly more GPU
         # intensive approach here.
-        y_tmp = A(x)  # forward project `x` into `y_tmp`
-        # We need speed:
-        # A(x, out=y_tmp)
+        # y_tmp = A(x)  # forward project `x` into `y_tmp`
+        A(x, out=y_tmp)
 
         # compute residual in `y_tmp`, apply R
         for p_tmp, p, r in zip(y_tmp, y, R):
@@ -434,13 +430,13 @@ def sirt(
             p_tmp *= r
 
         E = 10  # compute residual norm every `E`
-        if i % E == 0:  # this operation is expensive
+        if i % E == 0:  # the following operation is expensive
             res_norm = str(sum([xp_proj.linalg.norm(p) for p in y_tmp]))
         desc = 'SIRT [' + '*' * (i % E) + '.' * (E - i % E) + ']'
         bar.set_description(f"{desc}: {res_norm})")
 
         # backproject residual into `x_tmp`, apply C
-        x_tmp = A_T(y_tmp)
+        A_T(y_tmp, out=x_tmp)
         x_tmp *= C
         x -= x_tmp  # update `x`
         if mask is not None:
