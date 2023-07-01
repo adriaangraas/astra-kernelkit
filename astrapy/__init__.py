@@ -1,6 +1,7 @@
-from .kernels import *
-from .kernel import *
-from .algo import *
+from .algo import fp, bp, fdk, sirt
 from .data import *
-from .geom import *
+from .geom import resolve_volume_geometry
+from .geom.proj import *
+from .geom.vol import *
 from .process import *
+from .operator import *

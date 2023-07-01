@@ -1,9 +1,13 @@
+import copy
 from math import ceil
 from typing import Any, Sequence, Sized
-from cupy.cuda.texture import TextureObject
-from astrapy.data import *
-from astrapy.geom import *
-from astrapy.kernel import (copy_to_symbol, texture_shape, Kernel)
+
+from astrapy.geom import normalize_
+from astrapy.geom.proj import GeometrySequence
+from astrapy.geom.vol import VolumeGeometry
+from astrapy.kernel import Kernel, copy_to_symbol, texture_shape
+import numpy as np
+import cupy as cp
 
 
 class ConeProjection(Kernel):
@@ -48,10 +52,9 @@ class ConeProjection(Kernel):
 
     def __call__(
         self,
-        volume_texture: TextureObject,
-        volume_extent_min: Sequence,
-        volume_extent_max: Sequence,
-        geometries: Sequence,
+        volume_texture: cp.cuda.texture.TextureObject,
+        volume_geometry: VolumeGeometry,
+        projection_geometry: Sequence,
         projections: Sized,
         volume_rotation: Sequence = (0., 0., 0.),
         rays_per_pixel: int = 1
@@ -72,10 +75,10 @@ class ConeProjection(Kernel):
         and runs a thread for each combination (pixel-u, projection-angle).
         Then that thread loops through a number on pixels in the row.
         """
-        if isinstance(geometries, list):
-            geometries = GeometrySequence.fromList(geometries)
+        if isinstance(projection_geometry, list):
+            projection_geometry = GeometrySequence.fromList(projection_geometry)
         else:
-            geometries = copy.deepcopy(geometries)
+            projection_geometry = copy.deepcopy(projection_geometry)
 
         # TODO(Adriaan): explicitly formalize that multiple detectors is
         #   problematic atm. Maybe consider more advanced geometries where
@@ -84,9 +87,9 @@ class ConeProjection(Kernel):
         #   just render different u's and v's, and if they factually have
         #   less rows and columns, the computation is silently doing
         #   something that is similar to supersampling.
-        assert len(projections) == len(geometries)
-        for proj, rows, cols in zip(projections, geometries.detector.rows,
-                                    geometries.detector.cols):
+        assert len(projections) == len(projection_geometry)
+        for proj, rows, cols in zip(projections, projection_geometry.detector.rows,
+                                    projection_geometry.detector.cols):
             if not isinstance(proj, cp.ndarray):
                 raise TypeError("`projections` must be a CuPy ndarray.")
             if proj.dtype not in self.SUPPORTED_DTYPES:
@@ -112,8 +115,7 @@ class ConeProjection(Kernel):
                 "Detector supersampling is currently not supported.")
 
         volume_shape = texture_shape(volume_texture)
-        if not has_isotropic_voxels(
-            volume_shape, volume_extent_min, volume_extent_max):
+        if not volume_geometry.has_isotropic_voxels():
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
@@ -123,17 +125,14 @@ class ConeProjection(Kernel):
             "All projection files need to reside in own memory.")
         proj_ptrs = cp.array(proj_ptrs)
 
-        vox_size = voxel_size(volume_shape, volume_extent_min,
-                              volume_extent_max)
-        normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
-                         vox_size, volume_rotation)
+        normalize_(projection_geometry, volume_geometry)
 
-        module = self.compile(len(geometries))
+        module = self.compile(len(projection_geometry))
         funcs = [module.get_function(n) for n in self._get_names()]
-        self._upload_geometries(geometries, module)
-        output_scale = self._output_scale(vox_size)
-        rows = int(geometries.detector.rows[0])
-        cols = int(geometries.detector.cols[0])
+        self._upload_geometries(projection_geometry, module)
+        output_scale = self._output_scale(volume_geometry.voxel_size)
+        rows = int(projection_geometry.detector.rows[0])
+        cols = int(projection_geometry.detector.cols[0])
         blocks_x = ceil(rows / self._pixels_in_x_block)
         blocks_y = ceil(cols / self._pixels_per_y_thread)
 
@@ -153,13 +152,13 @@ class ConeProjection(Kernel):
                      *cp.float32(output_scale[axis])))
 
         # directions of ray for each projection (a number: 0, 1, 2)
-        if geometries.xp == np:
+        if projection_geometry.xp == np:
             geom_axis = np.argmax(np.abs(
-                geometries.source_position - geometries.detector_position),
+                projection_geometry.source_position - projection_geometry.detector_position),
                 axis=1)
-        elif geometries.xp == cp:
+        elif projection_geometry.xp == cp:
             geom_axis = cp.argmax(cp.abs(
-                geometries.source_position - geometries.detector_position),
+                projection_geometry.source_position - projection_geometry.detector_position),
                 axis=1, dtype=cp.int32).get()
         else:
             raise Exception("Geometry computation backend not understood.")
@@ -169,14 +168,14 @@ class ConeProjection(Kernel):
         # Start a stream of grids for each such group.
         # TODO(Adriaan): sort and launch?
         start = 0
-        for i in range(len(geometries)):
+        for i in range(len(projection_geometry)):
             # if direction changed: launch kernel for this batch
             if geom_axis[i] != geom_axis[start]:
                 _launch(start, i, geom_axis[start])
                 start = i
 
         # launch kernel for remaining projections
-        _launch(start, len(geometries), geom_axis[start])
+        _launch(start, len(projection_geometry), geom_axis[start])
 
     @staticmethod
     def _output_scale(voxel_size: np.ndarray) -> list:
@@ -194,7 +193,9 @@ class ConeProjection(Kernel):
         return output_scale
 
     @staticmethod
-    def _upload_geometries(geometries: GeometrySequence, module: cp.RawModule):
+    def _upload_geometries(
+        geometries,
+        module: cp.RawModule):
         """Transfer geometries to device as structure of arrays."""
         # TODO(Adriaan): maybe make a mapping between variables
         xp = geometries.xp

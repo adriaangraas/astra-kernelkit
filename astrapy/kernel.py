@@ -39,7 +39,7 @@ def copy_to_texture(array, type: str = 'array') -> txt.TextureObject:
         #  resource descriptor.. Try manually cleaning up `q`, maybe by
         #  force-deallocating or deleting it from the descriptor.
         cuda_array = txt.CUDAarray(_channel_desc, *reversed(array.shape))
-        cuda_array.copy_from(array)  # async
+        cuda_array.copy_from(array, cp.cuda.stream.Stream(null=True))  # async
         resource_desc = txt.ResourceDescriptor(
             cudaResourceTypeArray, cuArr=cuda_array)
         return txt.TextureObject(resource_desc, _texture_desc_3d)

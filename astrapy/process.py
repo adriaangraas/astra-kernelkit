@@ -38,7 +38,7 @@ import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy.geom import Geometry
+from astrapy.geom import ProjectionGeometry
 
 
 @lru_cache
@@ -112,7 +112,7 @@ def _ramlak_filter_fourier(projections, verbose=False):
 
 
 def preweight(projections,
-              geoms: list[Geometry],
+              geoms: list[ProjectionGeometry],
               detector_piercings: list = None,
               verbose: bool = False):
     """Pixelwise rescaling to compensate for ray length in conebeam images"""

@@ -1,10 +1,13 @@
-from math import ceil
-from typing import Any, Sequence, Sized
+import copy
+from typing import Any, Sequence
+import cupy as cp
 from cupy.cuda.texture import TextureObject
-from astrapy.data import *
-from astrapy.geom import *
-from astrapy.kernel import (copy_to_symbol, cuda_float4, texture_shape,
-                            Kernel)
+import numpy as np
+
+from astrapy.geom import normalize_
+from astrapy.geom.proj import GeometrySequence
+from astrapy.geom.vol import VolumeGeometry
+from astrapy.kernel import (copy_to_symbol, cuda_float4, Kernel)
 
 
 class ConeBackprojection(Kernel):
@@ -12,6 +15,7 @@ class ConeBackprojection(Kernel):
     VOXELS_PER_BLOCK = (16, 32, 6)
     LIMIT_PROJS_PER_BLOCK = 32
     MIN_LIMIT_PROJS = 1024
+    NUM_STREAMS = 2
 
     def __init__(self,
                  min_limit_projs: int = None,
@@ -46,9 +50,7 @@ class ConeBackprojection(Kernel):
                  projections_textures: Any,
                  params: Sequence,
                  volume: cp.ndarray,
-                 volume_extent_min: Sequence,
-                 volume_extent_max: Sequence,
-                 volume_rotation: Sequence = (0., 0., 0.)):
+                 volume_geometry: VolumeGeometry):
         """Backprojection with conebeam geometry.
 
         :type projections_textures: object
@@ -69,8 +71,7 @@ class ConeBackprojection(Kernel):
         assert volume.flags.c_contiguous is True, (
             f"`{self.__class__.__name__}` is not tested without "
             f"C-contiguous data.")
-        if not has_isotropic_voxels(
-            volume.shape, volume_extent_min, volume_extent_max):
+        if not volume_geometry.has_isotropic_voxels():
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
@@ -93,9 +94,6 @@ class ConeBackprojection(Kernel):
             raise ValueError("Please give in a list of 2D TextureObject, or "
                              "one 3D TextureObject.")
 
-        vox_volume = voxel_volume(
-            volume.shape, volume_extent_min, volume_extent_max)
-
         module = self.compile(len(params), compile_use_texture3D)
         cone_bp = module.get_function("cone_bp")
         copy_to_symbol(module, 'params', params.flatten())
@@ -103,24 +101,24 @@ class ConeBackprojection(Kernel):
         # TODO(Adriaan): better to have SoA instead AoS?
         blocks = np.ceil(np.asarray(volume.shape) / self._vox_block).astype(
             np.int32)
-        for start in range(0, len(params), self._limit_projs_per_block):
-            cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
+        streams = [cp.cuda.stream.Stream(non_blocking=True)
+                   for _ in range(self.NUM_STREAMS)]
+        for i, start in enumerate(
+            range(0, len(params), self._limit_projs_per_block)):
+            with streams[i % len(streams)]:
+                cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
                     (self._vox_block[0], self._vox_block[1]),  # threads
                     (projections,
                      volume,
                      start,
                      len(params),
                      *volume.shape,
-                     cp.float32(vox_volume)))
+                     cp.float32(volume_geometry.voxel_volume)))
+        [s.synchronize() for s in streams]
 
     @staticmethod
-    def geoms2params(
-        geometries: GeometrySequence,
-        vol_shape,
-        volume_extent_min,
-        volume_extent_max,
-        volume_rotation=(0., 0., 0.)):
-        """Precomputed kernel parameters
+    def geoms2params(projection_geometry, volume_geometry: VolumeGeometry):
+        """Compute kernel parameters
 
         We need three things in the kernel:
          - projected coordinates of pixels on the detector:
@@ -144,22 +142,18 @@ class ConeBackprojection(Kernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
-        if isinstance(geometries, list):
-            geometries = GeometrySequence.fromList(geometries)
+        if isinstance(projection_geometry, list):
+            geom_seq = GeometrySequence.fromList(projection_geometry)
         else:
-            geometries = copy.deepcopy(geometries)
+            geom_seq = copy.deepcopy(projection_geometry)
 
-        xp = geometries.xp
-
-        vox_size = voxel_size(
-            vol_shape, volume_extent_min, volume_extent_max)
-        normalize_geoms_(geometries, volume_extent_min, volume_extent_max,
-                         vox_size, volume_rotation)
-
-        u = geometries.u * geometries.detector.pixel_width[..., xp.newaxis]
-        v = geometries.v * geometries.detector.pixel_height[..., xp.newaxis]
-        s = geometries.source_position
-        d = geometries.detector_extent_min
+        xp = geom_seq.xp
+        normalize_(geom_seq, volume_geometry)
+        vox_size = volume_geometry.voxel_size
+        u = geom_seq.u * geom_seq.detector.pixel_width[..., xp.newaxis]
+        v = geom_seq.v * geom_seq.detector.pixel_height[..., xp.newaxis]
+        s = geom_seq.source_position
+        d = geom_seq.detector_extent_min
 
         # NB(ASTRA): for cross(u,v) we invert the volume scaling (for the voxel
         # size normalization) to get the proper dimensions for
@@ -196,10 +190,6 @@ class ConeBackprojection(Kernel):
             x=-scale * _det3x(u, v),
             y=scale * _det3y(u, v),
             z=-scale * _det3z(u, v))
-
-        # if fdk_weighting:
-        #     assert xp.allclose(denominator.w, 1.)
-
         return cp.asarray(
             numerator_u.to_list() +
             numerator_v.to_list() +

@@ -3,7 +3,7 @@ import numpy as np
 import astrapy as ap
 
 # geometry spinning
-geom_t0 = ap.Geometry(
+geom_t0 = ap.ProjectionGeometry(
     [-10, 0., 0.],
     [10, 0., 0.],
     [0, 1, 0],

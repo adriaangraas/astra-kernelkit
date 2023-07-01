@@ -47,7 +47,7 @@ def _cone_3d_to_geom3d(geometry):
     geoms = list()
     for angle in zip(geometry.angles):
         det_axes = np.moveaxis(geometry.det_axes(angle), -2, 0)
-        geoms.append(astrapy.geom.Geometry(
+        geoms.append(astrapy.geom.ProjectionGeometry(
             source_pos=geometry.src_position(angle)[0],
             det_pos=geometry.det_point_position(
                 angle, geometry.det_params.mid_pt)[0],

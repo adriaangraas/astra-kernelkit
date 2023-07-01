@@ -1,51 +1,89 @@
-from typing import Any, Callable
+from typing import Any, Callable, List, Optional, Tuple
 import cupy as cp
 import numpy as np
+from abc import ABC
 
-import astrapy as ap
+from astrapy.process import filter, preweight
+from astrapy.data import aspitched
+from astrapy.geom.proj import GeometrySequence, ProjectionGeometry
+from astrapy.geom.vol import VolumeGeometry
+from astrapy.kernel import copy_to_texture
+from astrapy.kernels.cone_bp import ConeBackprojection
+from astrapy.kernels.cone_fp import ConeProjection
 
 
-class ConeProjector:
-    def __init__(self,
-                 kernel: ap.ConeProjection = None,
-                 dtype=cp.float32,
-                 verbose=True):
-        self._K = ap.ConeProjection() if kernel is None else kernel
-        self._dtype = dtype
-        self._verbose = verbose
-        self._volume_texture = None
-        self._volume = None
-        self._projections = None
+class Projector(ABC):
+    def __init__(self):
+        self._vol_geom: Optional[VolumeGeometry] = None
+        self._proj_geom: Optional[List[ProjectionGeometry]] = None
 
     @property
-    def volume(self):
-        return self._volume
+    def projection_geometry(self) -> Optional[List[ProjectionGeometry]]:
+        return self._proj_geom
+
+    @projection_geometry.setter
+    def projection_geometry(self, value: List[ProjectionGeometry]):
+        del self.projection_geometry
+        self._proj_geom = value
+        self._proj_geom_seq = GeometrySequence.fromList(self._proj_geom)
+
+    @projection_geometry.deleter
+    def projection_geometry(self):
+        self._proj_geom = None
+        self._proj_geom_seq = None
+
+    @property
+    def volume_geometry(self) -> Optional[VolumeGeometry]:
+        return self._vol_geom
+
+    @volume_geometry.setter
+    def volume_geometry(self, value: VolumeGeometry):
+        self._vol_geom = value
+        # TODO invalidate params here
+
+
+class ConeProjector(Projector):
+    def __init__(self, kernel: ConeProjection = None, dtype=cp.float32,
+                 verbose=True):
+        super().__init__()
+        self._K = ConeProjection() if kernel is None else kernel
+        self._dtype = dtype
+        self._verbose = verbose
+        self._vol = None
+        self._projs = None
+        self._vol_txt = None
+        self._graph: Optional[cp.cuda.Graph] = None
+
+    @property
+    def volume(self) -> Optional[cp.ndarray]:
+        return self._vol
 
     @volume.setter
     def volume(self, value):
-        self._volume = value
-        self._volume_texture = ap.copy_to_texture(value)
+        self._vol = value
+        self._vol_txt = copy_to_texture(value)
 
     @property
-    def geometry(self):
-        return self._geometry
+    def projections(self) -> Optional[cp.ndarray]:
+        return self._projs
 
-    @geometry.setter
-    def geometry(self, value):
-        self._geometry = value
-        self._geometry_seq = ap.GeometrySequence.fromList(self._geometry)
-        # TODO precalculate params here
+    @projections.setter
+    def projections(self, value: cp.ndarray):
+        self._projs = value
 
-    def _out_shape_from_geometry(self):
-        nr_angles = len(self._geometry)
-        det_shape = (self._geometry[0].detector.rows,
-                     self._geometry[0].detector.cols)
-        return (nr_angles, *det_shape)
+    @volume.deleter
+    def volume(self):
+        self._vol = None
+        self._vol_txt = None
 
-    def __call__(self, ext_min, ext_max, out=None, additive=False):
-        if out is None:
-            out = cp.zeros(self._out_shape_from_geometry(),
-                           dtype=self._dtype)
+    @property
+    def projection_shape(self) -> Tuple:
+        nr_angles = len(self._proj_geom)
+        det_shape = (self._proj_geom[0].detector.rows,
+                     self._proj_geom[0].detector.cols)
+        return nr_angles, *det_shape
+
+    def __call__(self, additive=False, stream=None):
         #     for start_proj in tqdm(
         #         range(0, len(self.geometry), self._chunk_size),
         #         desc="Forward projecting",
@@ -66,30 +104,26 @@ class ConeProjector:
         #                 "Provide either `out` or `out_shapes`")
 
         if not additive:
-            [p.fill(0.) for p in out]
-
-        self._K(self._volume_texture,
-                ext_min,
-                ext_max,
-                self._geometry_seq,
-                out)
-        return out
+            [p.fill(0.) for p in self._projs]
+        self._K(self._vol_txt,
+                self._vol_geom,
+                self._proj_geom_seq,
+                self._projs)
+        return self._projs
 
 
-class ConeBackprojector:
-    def __init__(self,
-                 kernel: ap.ConeBackprojection = None,
-                 filter: Any = None,
-                 preproc_fn: Callable = None,
-                 texture_type: str = 'array',
-                 dtype=cp.float32,
-                 verbose=True):
+class ConeBackprojector(Projector):
+    def __init__(self, kernel: ConeBackprojection = None, filter: Any = None,
+                 preproc_fn: Callable = None, texture_type: str = 'array',
+                 dtype=cp.float32, volume_axis=(0, 1, 2), verbose=True):
         """
         If one of the `projections` is on CPU, use `chunk_size` to upload, process,
         compute, and download projections in batches. Alternatively, if `projections`
         lives on the GPU, compute all as a whole.
         """
-        self._K = ap.ConeBackprojection() if kernel is None else kernel
+        super().__init__()
+        self._K = ConeBackprojection() if kernel is None else kernel
+        self._vol_axs = volume_axis
         self._dtype = dtype
         self._verbose = verbose
         self._texture_type = texture_type.lower()
@@ -97,37 +131,18 @@ class ConeBackprojector:
             raise ValueError("`texture_type` not supported.")
         self._filter = filter
         self._preproc_fn = preproc_fn
-        self._geometry_seq = None
-        self._geometry_params = None
-        self._geometry_params_shp = None
-        self._geometry_params_ext_min = None
-        self._geometry_params_ext_max = None
-        self._projections_txt = None
+        self._textures = None
+        self._params = None
         self._projections = None
+        self._graph: Optional[cp.cuda.Graph] = None
 
     @property
-    def geometry(self):
-        return self._geometry
+    def volume(self) -> Optional[cp.ndarray]:
+        return self._vol
 
-    @geometry.setter
-    def geometry(self, value):
-        self._geometry = value
-        self._geometry_seq = ap.GeometrySequence.fromList(self._geometry)
-
-    def _params(self, vol_shp, ext_min, ext_max):
-        if (self._geometry_params is None or
-            (vol_shp == self._geometry_params_shp and
-             ext_min == self._geometry_params_ext_min and
-             ext_max == self._geometry_params_ext_max)):
-            if self._geometry_seq is None:
-                raise RuntimeError("Make sure to set the `geometry` property"
-                                   " of this projector before calling it.")
-            self._geometry_params = self._K.geoms2params(
-                self._geometry_seq,
-                vol_shp,
-                ext_min,
-                ext_max)
-        return self._geometry_params
+    @volume.setter
+    def volume(self, value):
+        self._vol = value
 
     @property
     def projections(self):
@@ -135,50 +150,63 @@ class ConeBackprojector:
 
     @projections.setter
     def projections(self, value):
+        del self.projections
         self._projections = value
-        if self._texture_type == 'array':
-            self._projections_txt = None  # invalidate textures if CUDA array
 
-    def _projection_textures(self):
-        if self._projections_txt is None:
+    @projections.deleter
+    def projections(self):
+        self._projections = None
+        if self._texture_type == 'array':
+            self._textures = None  # invalidate textures if CUDA array
+
+    def _compute_params(self):
+        """Compute the parameters for the backprojection kernel."""
+
+        if self._params is None:
+            if self._proj_geom_seq is None:
+                raise RuntimeError("Make sure to set the `geometry` property"
+                                   " of this projector before calling it.")
+            self._params = self._K.geoms2params(self._proj_geom_seq,
+                                                self.volume_geometry)
+        return self._params
+
+    def _compute_textures(self):
+        """Compute the textures for the backprojection kernel."""
+
+        if self._textures is None:
             if self._projections is None:
                 raise RuntimeError(
                     "Make sure to set the `projections` property"
                     " of this projector before calling it.")
             if self._texture_type.lower() == 'pitch2d':
-                projs = [ap.aspitched(p, cp) for p in self._projections]
+                projs = [aspitched(p, cp) for p in self._projections]
             else:
                 projs = cp.asarray(self.projections)
 
             if self._preproc_fn is not None:
                 self._preproc_fn(projs)
             if self._filter is not None:
-                ap.preweight(projs, self._geometry)
-                ap.filter(projs, filter=self._filter)
+                preweight(projs, self._proj_geom)
+                filter(projs, filter=self._filter)
 
             if self._texture_type.lower() == 'pitch2d':
-                txt = [ap.copy_to_texture(p, self._texture_type) for p in
+                txt = [copy_to_texture(p, self._texture_type) for p in
                        projs]
             else:
-                txt = ap.copy_to_texture(projs, self._texture_type)
-            self._projections_txt = txt
+                txt = copy_to_texture(projs, self._texture_type)
+            self._textures = txt
 
-        return self._projections_txt
+        return self._textures
 
-    def __call__(self, volume_extent_min, volume_extent_max,
-                 volume_shape=None, additive=False,
-                 out=None):
-        if out is None:
-            assert additive is False, "Setting `additive` has no effect."
-            if volume_shape is None:
-                raise RuntimeError("Provide either `volume_shape` or `out`.")
-            out = cp.zeros(volume_shape, dtype=self._dtype)
-        else:
-            assert volume_shape is None, \
-                "Setting `vol_shp` has no effect when `out` is provided."
-            if not additive:
-                out.fill(0.)
-        volume_shape = out.shape
+    def __call__(self, additive=False):
+        # if out is None:
+        #     assert not additive, "Setting `additive` has no effect."
+        #     out = cp.zeros(self.volume_geometry.shape, dtype=self._dtype)
+        # else:
+        #     assert out.shape == tuple(self.volume_geometry.shape)
+
+        if not additive:
+            self.volume.fill(0.)
 
         # with cp.cuda.stream.Stream():
         #     if self._chunk_size is None:
@@ -192,218 +220,272 @@ class ConeBackprojector:
         #         end = min(start + chunk_size, len(self.geometry))
         #         sub_geoms = self._geometry_list[start:end]
         #         sub_projs = projections[start:end]
-        self._K(
-            self._projection_textures(),
-            self._params(volume_shape, volume_extent_min, volume_extent_max),
-            out,
-            volume_extent_min,
-            volume_extent_max)
+        txts = self._compute_textures()
+        params = self._compute_params()
+        # TODO: reset graph when parameters change
 
-        # TODO(Adriaan): priority, make sure this does not invoke a copy
-        out[...] = cp.reshape(out, tuple(reversed(out.shape))).T
-        return out
+        # if self._graph is not None:
+        #     print('relaunch')
+        #     self._graph.launch(stream)
+        #     return out
+        #
+        # stream = cp.cuda.get_current_stream()
+        # if stream != stream.null:
+        #     stream.begin_capture()
+        self._K(txts, params, self._vol, self.volume_geometry)
+
+        if self._vol_axs == (0, 1, 2):
+            # TODO(Adriaan): priority, make sure this does not invoke a copy
+            self._vol[...] = cp.reshape(self._vol,
+                                        tuple(reversed(self._vol.shape))).T
+        elif self._vol_axs == (2, 1, 0):
+            pass
+        else:
+            raise NotImplementedError
+
+        # if stream.is_capturing():
+        #     self._graph = stream.end_capture()
+        #     self._graph.launch()
+
+        return self._vol
 
 
-def astra_compat_geoms2vectors(geoms):
-    def geom2astra(g):
-        c = lambda x: (x[1], x[0], x[2])
-        d = lambda x: np.array((x[1], x[0], x[2])) * g.detector.pixel_width
-        e = lambda x: np.array((x[1], x[0], x[2])) * g.detector.pixel_height
-        return [*c(g.source_position), *c(g.detector_position),
-                *d(g.u), *e(g.v)]
-    vectors = np.zeros((len(geoms), 12))
-    for i, g in enumerate(geoms):
-        vectors[i] = geom2astra(g)
-    return vectors
+class CompatProjector(Projector, ABC):
+    """Base class for ASTRA projectors."""
 
-
-class AstraCompatConeProjector:
     def __init__(self):
-        self._geometry = None
-        self._geometry_seq = None
-        self._volume_texture = None
+        """Base class for ASTRA projectors."""
+        super().__init__()
+
         self._volume = None
-        self._projector_id = None
-        self._projector_id_proj_shp = None
-        self._projector_id_ext_min = None
-        self._projector_id_ext_max = None
+        self._projections = None
+        self._vol_geom = None
+        self._proj_geom = None
+        self._astra_vol_link = None
+        self._astra_proj_link = None
+        self._astra_vol_geom = None
+        self._astra_proj_geom = None
+        self._astra_projector_id = None
 
     @property
-    def volume(self):
+    def volume(self) -> cp.ndarray:
+        """The volume to project from."""
         return self._volume
 
     @volume.setter
-    def volume(self, value):
-        # make sure CuPy doesn't clean up while ASTRA is busy
+    def volume(self, value: cp.ndarray):
+        """The volume to project from.
+
+        Parameters
+        ----------
+        value : array-like
+            The volume to project from."""
+        del self.volume
+
+        if self.volume_geometry is not None:
+            expected_shape = tuple(reversed(self.volume_geometry.shape))
+            if expected_shape != value.shape:
+                raise ValueError(
+                    f"Expected volume of shape {expected_shape} (z, y, x)"
+                    f" according to the volume geometry, but got "
+                    f"{value.shape} instead.")
+
+
+        import astra
+        # make sure CuPy doesn't clean up the volume while ASTRA is busy
+        assert value.dtype == cp.float32
+        assert value.flags.c_contiguous
         self._volume = value
+        z, y, x = self._volume.shape
+        self._astra_vol_link = astra.pythonutils.GPULink(
+            self._volume.data.ptr, x, y, z, x * 4)
 
-        import astra
-        vol = cp.ascontiguousarray(cp.transpose(self._volume, (2, 0, 1)))
-        z, y, x = vol.shape
-        self._vol_link = astra.pythonutils.GPULink(
-            vol.data.ptr, x, y, z, x * 4)
-        # TODO: delete old projector and volume
-        self._projector_id = None
-
-    def projector3d(self, ext_min, ext_max):
-        if (self._projector_id is None or (
-            np.all(ext_min == self._projector_id_ext_min) and
-            np.all(ext_max == self._projector_id_ext_max))):
-            import astra
-            if self.volume is None:
-                raise ValueError("Set `volume` first.")
-            vol_geom = astra.create_vol_geom(
-                *self._volume.shape,
-                ext_min[1], ext_max[1],
-                ext_min[0], ext_max[0],
-                ext_min[2], ext_max[2])
-
-            if self.geometry is None:
-                raise ValueError("Set `geometry` first.")
-            vectors = astra_compat_geoms2vectors(self.geometry)
-            proj_shp = (self._geometry_seq.detector.rows[0],
-                        self._geometry_seq.detector.cols[0])
-
-            proj_geom = astra.create_proj_geom('cone_vec', *proj_shp, vectors)
-            proj_cfg = {'type': 'cuda3d',
-                        'VolumeGeometry': vol_geom,
-                        'ProjectionGeometry': proj_geom,
-                        'options': {}}
-            self._projector_id = astra.projector3d.create(proj_cfg)
-        return self._projector_id
+    @volume.deleter
+    def volume(self):
+        """Delete the volume and clean up ASTRA projector."""
+        self._volume = None
+        self._astra_vol_link = None  # TODO: does this delete
+        self._astra_projector_id = None
 
     @property
-    def geometry(self):
-        return self._geometry
-
-    @geometry.setter
-    def geometry(self, value):
-        self._geometry = value
-        self._geometry_seq = ap.GeometrySequence.fromList(self._geometry)
-
-    def _out_shape_from_geometry(self):
-        if self._geometry is None:
-            raise ValueError("Set `geometry` first.")
-
-        nr_angles = len(self._geometry)
-        det_shape = (self._geometry[0].detector.rows,
-                     self._geometry[0].detector.cols)
-        return (nr_angles, *det_shape)
-
-    def __call__(self, volume_extent_min, volume_extent_max,
-                 out=None, additive=False):
-        import astra
-        import astra.experimental
-
-        if out is None:
-            out = cp.zeros(
-                self._out_shape_from_geometry(),
-                dtype=cp.float32)
-
-        projections = cp.ascontiguousarray(
-            out.transpose(1, 0, 2))
-        z, y, x = projections.shape
-        proj_link = astra.pythonutils.GPULink(
-            projections.data.ptr,
-            x, y, z, x * 4)
-        astra.experimental.direct_FPBP3D(
-            self.projector3d(volume_extent_min, volume_extent_max),
-            self._vol_link,
-            proj_link,
-            int(not additive),
-            "FP")
-        out[...] = projections.transpose(1, 0, 2)
-        return out
-
-
-class AstraCompatConeBackprojector:
-    def __init__(self):
-        """
-        If one of the `projections` is on CPU, use `chunk_size` to upload, process,
-        compute, and download projections in batches. Alternatively, if `projections`
-        lives on the GPU, compute all as a whole.
-        """
-        self._proj_link = None
-        self._projections = None
-        self._proj_geom = None
-        self._projector_id = None
-
-    @property
-    def projections(self):
+    def projections(self) -> cp.ndarray:
+        """The projections onto which to project."""
         return self._projections
 
     @projections.setter
     def projections(self, value: cp.ndarray):
-        import astra
-        # needs to remain an attribute otherwise cleaned up
-        value = cp.asarray(value, cp.float32)
-        self._proj = cp.ascontiguousarray(value.transpose(1, 0, 2), cp.float32)
-        z, y, x = self._proj.shape
-        self._proj_link = astra.pythonutils.GPULink(
-            self._proj.data.ptr, x, y, z, x * 4)
-        # TODO delete ASTRA prjoector and projecitons
-        self._projector_id = None
+        """The projections onto which to project."""
+        assert value.dtype == cp.float32
+        assert value.flags.c_contiguous
+
+        if self.projection_geometry is not None:
+            expected_shape = (self.projection_geometry[0].detector.rows,
+                              len(self.projection_geometry),
+                              self.projection_geometry[0].detector.cols)
+            if value.shape != expected_shape:
+                raise ValueError(f"Projection shape does not match projection"
+                                 f" geometry. Got {value.shape}, "
+                                 f" expected {expected_shape}.")
+
+        # maintain proj_link if it exists
+        z, y, x = value.shape
+        if (self._astra_proj_link is not None
+            and self._projections.shape == value.shape):
+            self._projections[...] = value  # update in-place
+        else:
+            import astra
+            self._projections = value
+            self._astra_proj_link = astra.pythonutils.GPULink(
+                self._projections.data.ptr, x, y, z, x * 4)
+            # needs to remain a class attribute, otherwise cleaned up
+
+    @projections.deleter
+    def projections(self):
+        """Delete the projections and clean up ASTRA projector."""
+        self._projections = None
+        self._astra_proj_link = None
+        self._astra_projector_id = None
 
     @property
-    def geometry(self):
-        return self._geometry
+    def volume_geometry(self) -> VolumeGeometry:
+        return self._vol_geom
 
-    @geometry.setter
-    def geometry(self, value):
+    @volume_geometry.setter
+    def volume_geometry(self, value: VolumeGeometry):
+        del self.volume_geometry  # invalidate projector
+
+        if self.volume is not None:
+            expected_shape_volume = tuple(reversed(self.volume.shape))
+            if value.shape != expected_shape_volume:
+                raise ValueError(
+                    f"The given volume geometry does not match the "
+                    f"shape of the volume in the projector. Got "
+                    f"{value.shape} in (x, y, z) convention of the "
+                    f"volume geometry, but the volume shape is "
+                    f"{self.volume.shape} in (z, y, x) convention.")
+
+        self._vol_geom = value
+        vol_shp = value.shape
+        ext_min = value.extent_min
+        ext_max = value.extent_max
         import astra
-        self._geometry = value
-        vectors = astra_compat_geoms2vectors(value)
-        det_shape = (self._geometry[0].detector.rows,
-                     self._geometry[0].detector.cols)
-        self._proj_geom = astra.create_proj_geom(
+        self._astra_vol_geom = astra.create_vol_geom(
+            vol_shp[1], vol_shp[0], vol_shp[2],
+            ext_min[1], ext_max[1],
+            ext_min[0], ext_max[0],
+            ext_min[2], ext_max[2],
+        )
+
+    @volume_geometry.deleter
+    def volume_geometry(self):
+        self._vol_geom = None
+        self._astra_vol_geom = None  # TODO: does this delete
+        self._astra_projector_id = None
+
+    @property
+    def projection_geometry(self):
+        return self._proj_geom
+
+    @projection_geometry.setter
+    def projection_geometry(self, value: List[ProjectionGeometry]):
+        del self.projection_geometry  # invalidate projector
+
+        if self.projections is not None:
+            if self.projections.shape[1] != len(value):
+                raise ValueError("Number of projections does not match"
+                                 " projection geometry.")
+            if (self.projections.shape[0] != value[0].detector.rows
+                or self.projections.shape[2] != value[0].detector.cols):
+                raise ValueError("Projection shape does not match projection"
+                                 " geometry shape.")
+
+        import astra
+        self._proj_geom = value
+        det_shape = (self._proj_geom[0].detector.rows,
+                     self._proj_geom[0].detector.cols)
+        vectors = self._geoms2vectors(value)
+        self._astra_proj_geom = astra.create_proj_geom(
             'cone_vec', *det_shape, vectors)
-        self._projector_id = None  # invalidate old projector
-        # TODO delete
 
-    def projector3d(self, vol_shp, ext_min, ext_max):
+    @projection_geometry.deleter
+    def projection_geometry(self):
+        self._proj_geom = None
+        self._astra_proj_geom = None  # TODO: does this delete
+        self._astra_projector_id = None
+
+    @staticmethod
+    def _geoms2vectors(geoms: List[ProjectionGeometry]):
+        """Convert a list of geometries to ASTRA vectors."""
+
+        def geom2astra(g):
+            c = lambda x: (x[1], x[0], x[2])
+            d = lambda x: np.array((x[1], x[0], x[2])) * g.detector.pixel_width
+            e = lambda x: np.array(
+                (x[1], x[0], x[2])) * g.detector.pixel_height
+            return [*c(g.source_position), *c(g.detector_position),
+                    *d(g.u), *e(g.v)]
+
+        vectors = np.zeros((len(geoms), 12))
+        for i, g in enumerate(geoms):
+            vectors[i] = geom2astra(g)
+        return vectors
+
+    def projector3d(self):
         import astra
-        if self._projector_id is None:
-            if self._proj_geom is None:
-                raise RuntimeError("Geometry must be given before creating "
-                                   "a projector. Use the `geometry` setter "
-                                   "of this class.")
-            self._vol_geom = astra.create_vol_geom(
-                *vol_shp,
-                ext_min[1], ext_max[1],
-                ext_min[0], ext_max[0],
-                ext_min[2], ext_max[2])
+        if self._astra_projector_id is None:
+            if self._astra_proj_geom is None:
+                raise RuntimeError("Projection geometries must be given before"
+                                   " creating a projector. Use the "
+                                   "`projection_geometry` setter of this"
+                                   " class.")
+            if self._astra_vol_geom is None:
+                raise RuntimeError("`VolumeGeometry` must be given before "
+                                   "creating a projector. Use the "
+                                   "`volume_geometry` setter of this class")
             proj_cfg = {'type': 'cuda3d',
-                        'VolumeGeometry': self._vol_geom,
-                        'ProjectionGeometry': self._proj_geom,
+                        'VolumeGeometry': self._astra_vol_geom,
+                        'ProjectionGeometry': self._astra_proj_geom,
                         'options': {}}
-            self._projector_id = astra.projector3d.create(proj_cfg)
-        return self._projector_id
+            self._astra_projector_id = astra.projector3d.create(proj_cfg)
+        return self._astra_projector_id
 
-    def __call__(self, volume_extent_min, volume_extent_max,
-                 volume_shape=None, additive=False, out=None):
-        if out is None:
-            assert additive is False, "Setting `additive` has no effect."
-            if volume_shape is None:
-                raise RuntimeError("Provide either `volume_shape` or `out`.")
-            out = cp.zeros(volume_shape, dtype=cp.float32)
-        else:
-            assert volume_shape is None, \
-                "Setting `vol_shp` has no effect when `out` is provided."
-            if not additive:
-                out.fill(0.)
-        volume_shape = out.shape
 
+class AstraCompatConeProjector(CompatProjector):
+    def __call__(self, additive=False):
+        import astra
         import astra.experimental
-        astra_vol = cp.ascontiguousarray(cp.transpose(out, (2, 0, 1)))
-        z, y, x = astra_vol.shape
-        vol_link = astra.pythonutils.GPULink(astra_vol.data.ptr, x, y, z,
-                                             x * 4)
         astra.experimental.direct_FPBP3D(
-            self.projector3d(volume_shape, volume_extent_min,
-                             volume_extent_max),
-            vol_link,
-            self._proj_link,
+            self.projector3d(),
+            self._astra_vol_link,
+            self._astra_proj_link,
+            int(not additive),
+            "FP")
+        return self._projections
+
+
+class AstraCompatConeBackprojector(CompatProjector):
+    def __call__(self, additive=False):
+        """
+        Backproject a set of projections in self.projections.
+
+        Parameters
+        ----------
+        volume_extent_min  :   tuple of floats  (z, y, x)
+        volume_extent_max  :   tuple of floats  (z, y, x)
+        volume_shape    :   tuple of ints    (z, y, x)  (optional)
+        volume_axes     :   tuple of ints    (z, y, x)  (optional)
+        additive        :   bool    (optional)
+        out        :   ndarray (optional)
+
+        Returns
+        -------
+        out : ndarray   (z, y, x) or (x, y, z) ndarray  (optional)
+        """
+        import astra.experimental
+        astra.experimental.direct_FPBP3D(
+            self.projector3d(),
+            self._astra_vol_link,
+            self._astra_proj_link,
             int(not additive),
             "BP")
-        out[...] = astra_vol.transpose(1, 2, 0)
-        return out
+        return self._volume

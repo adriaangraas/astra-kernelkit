@@ -6,7 +6,7 @@ import reflex
 from reflex import centralize
 
 from astrapy import fdk, sirt_experimental, suggest_volume_extent
-from astrapy.geom import Detector, Geometry
+from astrapy.geom import Detector, ProjectionGeometry
 
 
 def geom(settings, angles, corrections: Any = True, verbose=None):
@@ -30,7 +30,7 @@ def geom(settings, angles, corrections: Any = True, verbose=None):
             cols=g.detector.cols,
             pixel_width=g.detector.pixel_width,
             pixel_height=g.detector.pixel_height)
-        geom = Geometry(
+        geom = ProjectionGeometry(
             source_pos=g.source_position,
             det_pos=g.detector_position,
             u_unit=hv,

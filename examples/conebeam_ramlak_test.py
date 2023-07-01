@@ -3,10 +3,10 @@ import numpy as np
 
 USE_DEPRICATED_FILTER = True
 from astrapy import fdk, fp
-from astrapy import Detector, Geometry, rotate
+from astrapy import Detector, ProjectionGeometry, rotate
 
 # geometry spinning
-geom_t0 = Geometry(
+geom_t0 = ProjectionGeometry(
     [-10, 0., 0.],
     [20, 0., 0.],
     [0, 1, 0],

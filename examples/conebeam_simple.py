@@ -2,21 +2,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import astrapy as ap
 
-# geometry spinning
-geom_t0 = ap.Geometry(
-    [-10, 0., 0.],
-    [20, 0., 0.],
-    [0, 1, 0],
-    [0, 0, 1],
-    ap.Detector(99, 141, .01, .01))
-geom_t0 = ap.rotate(geom_t0, yaw=.5*np.pi, roll=.2 * np.pi, pitch=.1 * np.pi)
+# custom geometry, 99x141 detector, 1mm pixel size
+# 10cm source-object distance, 20cm object-detector distance along x-axis
+geom_t0 = (ap.ProjectionGeometry([-10, 0, 0], [20, 0, 0],
+                                 [0, 1, 0], [0, 0, 1],
+                                 ap.Detector(99, 141, .01, .01)))
+geom_t0 = ap.rotate(geom_t0, yaw=.5 * np.pi, roll=.2 * np.pi, pitch=.1 * np.pi)
 
+# angles from 0 to 2pi, 719 projections
 angles = np.linspace(0, 2 * np.pi, 719, False)
 geoms = [ap.rotate(geom_t0, yaw=a) for a in angles]
-vol_min, vol_max = [-.2, -.2, -.2 * 1.2], [.2, .2, .2 * 1.2]
+vol_min, vol_max = [-.2, -.2 * 1.1, -.2 * 1.2], [.2, .2 * 1.1, .2 * 1.2]
 
 # cube with random voxels
-vol = np.zeros([100, 100, 120])
+vol = np.zeros([100, 110, 120])  # x, y, z
 vol[25:75, 25:75, 25:75] = np.random.random([50] * 3)
 vol[35:65, 35:65, 35:65] += np.random.random([30] * 3)
 vol[45:55, 45:55, 45:55] += 1.

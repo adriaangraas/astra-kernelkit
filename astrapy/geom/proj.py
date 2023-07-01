@@ -1,10 +1,9 @@
 import copy
+import warnings
 from dataclasses import dataclass
 from typing import List, Sequence
 import numpy as np
-import cupy as cp
 import transforms3d
-
 
 @dataclass
 class Detector:
@@ -14,8 +13,8 @@ class Detector:
     """
     rows: int
     cols: int
-    pixel_width: float
     pixel_height: float
+    pixel_width: float
 
     @property
     def width(self):
@@ -30,7 +29,7 @@ class Detector:
         return self.pixel_width * self.pixel_height
 
 
-class Geometry:
+class ProjectionGeometry:
     ANGLES_CONVENTION = "sxyz"
 
     def __init__(self,
@@ -70,12 +69,12 @@ class Geometry:
     @staticmethod
     def angles2mat(r, p, y) -> np.ndarray:
         return transforms3d.euler.euler2mat(
-            r, p, y, Geometry.ANGLES_CONVENTION)
+            r, p, y, ProjectionGeometry.ANGLES_CONVENTION)
 
     @staticmethod
     def mat2angles(mat) -> float:
         return transforms3d.euler.mat2euler(
-            mat, Geometry.ANGLES_CONVENTION)
+            mat, ProjectionGeometry.ANGLES_CONVENTION)
 
     @property
     def u(self):
@@ -98,7 +97,7 @@ class Geometry:
         self.__v = value
 
     def __str__(self):
-        return (f"Tube {self.source_position} "
+        return (f"Source {self.source_position} "
                 f"Detector {self.detector_position}"
                 f"U {self.u}"
                 f"V {self.v}")
@@ -149,24 +148,27 @@ class GeometrySequence:
                 - self.u * self.detector.width[..., self.xp.newaxis] / 2)
 
     @classmethod
-    def fromList(cls, geometries: List[Geometry]):
-        _cvrt = lambda arr, dtype: cls.xp.ascontiguousarray(
-            cls.xp.array(arr, dtype=dtype))
+    def fromList(cls, geometries: List[ProjectionGeometry], xp=None):
+        if xp is None:
+            xp = cls.xp
+
+        _cvrt = lambda arr, dtype: xp.ascontiguousarray(
+            xp.array(arr, dtype=dtype))
 
         ds = cls.DetectorSequence(
-            rows=_cvrt([g.detector.rows for g in geometries], cls.xp.int32),
-            cols=_cvrt([g.detector.cols for g in geometries], cls.xp.int32),
+            rows=_cvrt([g.detector.rows for g in geometries], xp.int32),
+            cols=_cvrt([g.detector.cols for g in geometries], xp.int32),
             pixel_width=_cvrt([g.detector.pixel_width for g in geometries],
-                              cls.xp.float32),
+                              xp.float32),
             pixel_height=_cvrt([g.detector.pixel_height for g in geometries],
-                               cls.xp.float32))
+                               xp.float32))
         gs = cls(
             source_position=_cvrt([g.source_position for g in geometries],
-                                  cls.xp.float32),
+                                  xp.float32),
             detector_position=_cvrt([g.detector_position for g in geometries],
-                                    cls.xp.float32),
-            u=_cvrt([g.u for g in geometries], cls.xp.float32),
-            v=_cvrt([g.v for g in geometries], cls.xp.float32),
+                                    xp.float32),
+            u=_cvrt([g.u for g in geometries], xp.float32),
+            v=_cvrt([g.v for g in geometries], xp.float32),
             detector=ds)
         return gs
 
@@ -207,35 +209,40 @@ class GeometrySequence:
         return obj
 
 
-def normalize_geoms_(
-    geometries: GeometrySequence,
-    volume_extent_min,
-    volume_extent_max,
-    volume_voxel_size,
-    volume_rotation
-):
-    xp = geometries.xp
-    shift_(
-        geometries,
-        -(xp.asarray(volume_extent_min) + xp.asarray(volume_extent_max)) / 2)
-    scale_(geometries,
-           xp.asarray(volume_voxel_size))
-    rotate_(geometries, *volume_rotation)
+def shift(geom: ProjectionGeometry,
+          shift_vector: Sequence) -> ProjectionGeometry:
+    """Creates a new geometry by shifting an existing
 
+    Parameters
+    ----------
+    geom
+    shift_vector
 
-def shift(geom, shift_vector):
+    Returns
+    -------
+    New `ProjectionGeometry`
+    """
     geom = copy.deepcopy(geom)
     geom.source_position += shift_vector
     geom.detector_position += shift_vector
     return geom
 
 
-def shift_(geom, shift_vector: np.ndarray):
+def shift_(geom: ProjectionGeometry,
+           shift_vector: Sequence) -> None:
+    """In-place shift in 3D space
+
+    Parameters
+    ----------
+    geom
+    shift_vector
+    """
     geom.source_position += shift_vector
     geom.detector_position += shift_vector
 
 
-def scale(geom, scaling: np.ndarray):
+def scale(geom: ProjectionGeometry,
+          scaling: np.ndarray):
     geom = copy.deepcopy(geom)
     # detector pixels have to be scaled first, because
     # detector.width and detector.height need to be scaled accordingly
@@ -256,7 +263,7 @@ def scale(geom, scaling: np.ndarray):
     return geom
 
 
-def scale_(geom, scaling):
+def scale_(geom: ProjectionGeometry, scaling: float):
     # detector pixels have to be scaled first, because
     # detector.width and detector.height need to be scaled accordingly
     xp = geom.xp
@@ -278,10 +285,10 @@ def scale_(geom, scaling):
     xp.divide(geom.detector_position, scaling, out=geom.detector_position)
 
 
-def rotate(geom,
+def rotate(geom: ProjectionGeometry,
            roll: float = 0., pitch: float = 0., yaw: float = 0.):
     ngeom = copy.deepcopy(geom)
-    RT = Geometry.angles2mat(roll, pitch, yaw).T
+    RT = ProjectionGeometry.angles2mat(roll, pitch, yaw).T
     ngeom.source_position = RT @ geom.source_position
     ngeom.detector_position = RT @ geom.detector_position
     ngeom.u = RT @ geom.u
@@ -289,34 +296,13 @@ def rotate(geom,
     return ngeom
 
 
-def rotate_(geom,
+def rotate_(geom: ProjectionGeometry,
             roll: float = 0., pitch: float = 0., yaw: float = 0.):
     xp = geom.xp
     dtype = geom.source_position.dtype
-    R = xp.asarray(Geometry.angles2mat(roll, pitch, yaw), dtype=dtype)
+    R = xp.asarray(ProjectionGeometry.angles2mat(roll, pitch, yaw),
+                   dtype=dtype)
     geom.source_position[...] = geom.source_position @ R
     geom.detector_position[...] = geom.detector_position @ R
     geom.u[...] = geom.u @ R
     geom.v[...] = geom.v @ R
-
-
-def plot(geoms):
-    import matplotlib.pyplot as plt
-    srcs_x = [g.source_position[0] for g in geoms]
-    srcs_y = [g.source_position[1] for g in geoms]
-    srcs_z = [g.source_position[2] for g in geoms]
-    dets_x = [g.detector_position[0] for g in geoms]
-    dets_y = [g.detector_position[1] for g in geoms]
-    dets_z = [g.detector_position[2] for g in geoms]
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
-    ax.scatter(srcs_x, srcs_y, srcs_z, marker='*')
-    ax.scatter(dets_x, dets_y, dets_z, marker='o')
-    # for g in geoms:
-    #     ax.arrow3D(*g.source_position, *g.u * g.detector.width)
-    #     ax.arrow3D(*g.source_position, *g.v * g.detector.height)
-    plt.show()
