@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Optional, Tuple
 import cupy as cp
+from astrapy.projector import (ConeProjector, ConeBackprojector,
+                               AstraCompatConeProjector,
+                               AstraCompatConeBackprojector)
+
 
 class Operator(ABC):
     """Projectors that play friendly together as linear operators. Good for
@@ -11,7 +15,6 @@ class Operator(ABC):
         raise NotImplementedError
 
     @property
-    @abstractmethod
     def T(self):
         raise NotImplementedError
 
@@ -26,25 +29,16 @@ class Operator(ABC):
         raise NotImplementedError
 
 
-class ConebeamTransform(Operator):
+class XrayTransform(Operator):
     def __init__(self,
                  projection_geometry: Any,
                  volume_geometry: Any,
+                 projector: Callable,
+                 backprojector: Callable,
                  volume_axes: Tuple = (0, 1, 2),
-                 projection_axes: Tuple = (0, 1, 2),
-                 fp: type = None,
-                 bp: type = None,
-                 astra_compat: bool = False):
-        if astra_compat:
-            if projection_axes != (1, 0, 2):
-                raise ValueError("ASTRA Toolbox compatible format can only"
-                                 " be used with `projection_axes=(1, 0, 2)`.")
-            if volume_axes != (2, 1, 0):
-                raise ValueError("ASTRA Toolbox compatible format can only"
-                                 " be used with `volume_axes=(2, 1, 0)`.")
-            self.projector = fp()
-        else:
-            self.projector = ConeProjector()
+                 projection_axes: Tuple = (0, 1, 2)):
+        self.projector = projector
+        self.backprojector = backprojector
         self.projector.projection_geometry = projection_geometry
         self.projector.volume_geometry = volume_geometry
         self._proj_axs = projection_axes
@@ -69,8 +63,7 @@ class ConebeamTransform(Operator):
             out = cp.zeros(self.range_shape, dtype=cp.float32)
         self.projector.volume = input
         self.projector.projections = out
-        self.projector()
-        return out
+        return self.projector()
 
     @property
     def T(self):
@@ -78,14 +71,11 @@ class ConebeamTransform(Operator):
 
         class _Adjoint(Operator):
             def __init__(self):
-                if isinstance(self_.projector, AstraCompatConeProjector):
-                    self.projector = AstraCompatConeBackprojector()
-                else:
-                    self.projector = ConeBackprojector()
-                self.projector.projection_geometry = self_.projector. \
-                    projection_geometry
-                self.projector.volume_geometry = self_.projector. \
-                    volume_geometry
+                self.projector = self_.backprojector
+                self.projector.projection_geometry = (self_.projector.
+                                                      projection_geometry)
+                self.projector.volume_geometry = (self_.projector.
+                                                  volume_geometry)
 
             @property
             def domain_shape(self) -> Tuple:
@@ -101,8 +91,7 @@ class ConebeamTransform(Operator):
                     out = cp.zeros(self.range_shape, dtype=cp.float32)
                 self.projector.projections = input
                 self.projector.volume = out
-                self.projector()
-                return out
+                return self.projector()
 
             @property
             def T(self):
@@ -111,3 +100,29 @@ class ConebeamTransform(Operator):
         if self._T is None:
             self._T = _Adjoint()
         return self._T
+
+
+class ConebeamTransform(XrayTransform):
+    def __init__(self,
+                 projection_geometry: Any,
+                 volume_geometry: Any,
+                 volume_axes: Tuple = (0, 1, 2),
+                 projection_axes: Tuple = (0, 1, 2),
+                 astra_compat: bool = False):
+        if astra_compat:
+            if projection_axes != (1, 0, 2):
+                raise ValueError("ASTRA Toolbox compatible format can only"
+                                 " be used with `projection_axes=(1, 0, 2)`.")
+            if volume_axes != (2, 1, 0):
+                raise ValueError("ASTRA Toolbox compatible format can only"
+                                 " be used with `volume_axes=(2, 1, 0)`.")
+            projector = AstraCompatConeProjector()
+            backprojector = AstraCompatConeBackprojector()
+        else:
+            projector = ConeProjector()
+            backprojector = ConeBackprojector()
+
+        super().__init__(projection_geometry, volume_geometry,
+                         projector, backprojector,
+                         volume_axes=volume_axes,
+                         projection_axes=projection_axes)

@@ -5,7 +5,7 @@ import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy import ConebeamTransform
+from astrapy.operator import ConebeamTransform
 from astrapy.kernel import Kernel
 from astrapy.geom import resolve_volume_geometry
 from astrapy.geom.vol import VolumeGeometry
@@ -189,7 +189,7 @@ def sirt(
     def A(x, out=None):
         if out is None:
             out = xp_proj.zeros((len(geometry), geometry[0].detector.rows,
-                                    geometry[0].detector.cols), dtype)
+                                 geometry[0].detector.cols), dtype)
         fptor.volume = x
         fptor.projections = out
         return fptor()
@@ -198,7 +198,7 @@ def sirt(
         if out is None:
             out = xp_vol.zeros(x.shape, dtype=cp.float32)
         bptor.projections = y
-        bptor.volume=out
+        bptor.volume = out
         return bptor()
 
     if mask is not None:
