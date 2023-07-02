@@ -11,19 +11,33 @@ from astrapy.kernel import (copy_to_symbol, cuda_float4, Kernel)
 
 
 class ConeBackprojection(Kernel):
-    # last dim is not number of threads, but volume slab thickness
+    """Conebeam backprojection kernel."""
     VOXELS_PER_BLOCK = (16, 32, 6)
     LIMIT_PROJS_PER_BLOCK = 32
-    MIN_LIMIT_PROJS = 1024
+    MAX_PROJS = 1024
     NUM_STREAMS = 2
 
     def __init__(self,
-                 min_limit_projs: int = None,
+                 max_projs: int = None,
                  voxels_per_block: tuple = None,
                  limit_projs_per_block: int = None):
+        """Conebeam backprojection kernel.
+
+        Parameters
+        ----------
+        max_projs : int, optional
+            Maximum number of projections to be processed in one kernel.
+            If `None` defaults to `MAX_PROJS`.
+        voxels_per_block : tuple, optional
+            Number of voxels computed in one thread block.
+            If `None` defaults to `VOXELS_PER_BLOCK`.
+        limit_projs_per_block : int, optional
+            Maximum number of projections processed in one thread block.
+            If `None` defaults to `LIMIT_PROJS_PER_BLOCK`.
+        """
         super().__init__('cone_bp.cu')
-        self._min_limit_projs = (min_limit_projs if min_limit_projs is not None
-                                 else self.MIN_LIMIT_PROJS)
+        self._min_limit_projs = (max_projs if max_projs is not None
+                                 else self.MAX_PROJS)
         self._vox_block = (voxels_per_block if voxels_per_block is not None
                            else self.VOXELS_PER_BLOCK)
         self._limit_projs_per_block = (
@@ -31,7 +45,19 @@ class ConeBackprojection(Kernel):
             else self.LIMIT_PROJS_PER_BLOCK)
 
     def compile(self, nr_projs: int = None,
-                use_texture_3D: bool = True) -> cp.RawModule:
+                use_texture_3d: bool = True) -> cp.RawModule:
+        """Compile the kernel.
+
+        Parameters
+        ----------
+        nr_projs : int, optional
+            Number of projections to be processed in one kernel.
+            If `None` defaults to `self._min_limit_projs`.
+        use_texture_3d : bool, optional
+            If `True` compiles the kernel to use 3D texture memory.
+            If `False` compiles the kernel to use 2D texture memory.
+            Defaults to `True`.
+        """
         if nr_projs is None:
             nr_projs_global = self._min_limit_projs
         else:
@@ -44,7 +70,7 @@ class ConeBackprojection(Kernel):
                              'nr_vxls_block_z': self._vox_block[2],
                              'nr_projs_block': self._limit_projs_per_block,
                              'nr_projs_global': nr_projs_global,
-                             'texture3D': use_texture_3D})
+                             'texture3D': use_texture_3d})
 
     def __call__(self,
                  projections_textures: Any,
@@ -53,13 +79,17 @@ class ConeBackprojection(Kernel):
                  volume_geometry: VolumeGeometry):
         """Backprojection with conebeam geometry.
 
-        :type projections_textures: object
+        Parameters
+        ----------
+        projections_textures : list[TextureObject] or TextureObject
             If `TextureObject` the kernel compiles with `texture3D` spec,
             and the kernel expects a 3D contiguous texture block and uses
             `tex3D()` to access it.
             If `list[TextureObject]` the kernel compiles to expect an array
             of pointers to 2D texture objects (one for each projection), and
             accesses the textures by a list of pointers.
+        params : Sequence
+            Sequence of parameters for each projection.
         """
         if isinstance(volume, cp.ndarray):
             if volume.dtype not in self.SUPPORTED_DTYPES:
@@ -107,13 +137,13 @@ class ConeBackprojection(Kernel):
             range(0, len(params), self._limit_projs_per_block)):
             with streams[i % len(streams)]:
                 cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
-                    (self._vox_block[0], self._vox_block[1]),  # threads
-                    (projections,
-                     volume,
-                     start,
-                     len(params),
-                     *volume.shape,
-                     cp.float32(volume_geometry.voxel_volume)))
+                        (self._vox_block[0], self._vox_block[1]),  # threads
+                        (projections,
+                         volume,
+                         start,
+                         len(params),
+                         *volume.shape,
+                         cp.float32(volume_geometry.voxel_volume)))
         [s.synchronize() for s in streams]
 
     @staticmethod

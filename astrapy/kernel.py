@@ -26,14 +26,29 @@ _channel_desc = txt.ChannelFormatDescriptor(
     32, 0, 0, 0, cudaChannelFormatKindFloat)
 
 
-def copy_to_texture(array, type: str = 'array') -> txt.TextureObject:
-    """Creates a single-channel 2D/3D texture object of type float"""
+def copy_to_texture(array: cp.ndarray,
+                    type: str = 'array') -> txt.TextureObject:
+    """Creates a single-channel 2D/3D texture object of type float
+    from a CuPy array.
+
+    Parameters
+    ----------
+    array : cupy.ndarray
+        Array to be copied to texture. Must be pitched when `type` is
+        'pitch2d'.
+    type : str, optional
+        Type of texture to be created. Can be 'array' or 'pitch2d'.
+        Defaults to 'array'. An 'array' texture may be faster, but requires
+        the array to be copied to a CUDA array first, which increases memory
+        usage.
+
+    Returns
+    -------
+    cupy.cuda.texture.TextureObject
+        Texture object.
+    """
     if type.lower() == 'array':
         assert array.ndim in (2, 3)
-        # We're using an CUDA array resource type,
-        # but has more efficient access, compared to linear memory. I can imagine
-        # that, when memory is an issue, it would be more performant to prefer
-        # linear memory for projections.
         # TODO: for some reason CUDAarray's cause memory overflow, maybe
         #  `q` doesn't get cleaned up as it is still associated with the
         #  resource descriptor.. Try manually cleaning up `q`, maybe by
@@ -65,6 +80,16 @@ def texture_shape(obj: txt.TextureObject) -> tuple:
 
     This does *not* return the pitched shape, but the original shape of the
     array, where possible. See `_copy_to_texture`.
+
+    Parameters
+    ----------
+    obj : txt.TextureObject
+        Texture object
+
+    Returns
+    -------
+    tuple
+        Shape of the array in the texture
     """
     rs = obj.ResDesc
     if rs.arr is not None:
@@ -85,6 +110,15 @@ def copy_to_symbol(module: cp.RawModule, name: str, array):
 
     Inspired by: https://github.com/cupy/cupy/issues/1703
     See also: https://docs.chainer.org/en/v1.3.1/_modules/cupy/creation/from_data.html
+
+    Parameters
+    ----------
+    module : cp.RawModule
+        CUDA module
+    name : str
+        Name of the symbol to copy to (e.g. constant memory)
+    array : np.ndarray
+        Array to copy to the symbol
     """
     import ctypes
     array = np.squeeze(array)
@@ -114,18 +148,20 @@ class cuda_float4:
 
 
 class Kernel(ABC):
+    """Abstract base class for CUDA kernels"""
     FLOAT_DTYPE = cp.float32
     SUPPORTED_DTYPES = [cp.float32]
 
     @abstractmethod
-    def __init__(self, resource: str, package='astrapy.cuda', *args):
-        """
-        Note: Kernel should not do anything with global memory allocation.
-        Managing global memory (with on/offloading, limits, CuPy
-        pools, etc. is way too extensive to be handled within a kernel itself.
+    def __init__(self, resource: str, package='astrapy.cuda'):
+        """Initialize the kernel
 
-        :param path:
-        :param allow_recompilation:
+        Parameters
+        ----------
+        resource : str
+            Name of the resource file containing the kernel source
+        package : str
+            Name of the package where the resource file is located
         """
         # we cannot load the source immediately because some template
         # arguments may only be known at call time.
@@ -142,12 +178,21 @@ class Kernel(ABC):
 
     @property
     def cuda_source(self) -> str:
+        """Returns the CUDA source code of the kernel"""
         return self._cuda_source
 
     def __compile(self,
                   name_expressions,
                   template_kwargs) -> cp.RawModule:
-        """Renders Jinja2 template and imports kernel in CuPy"""
+        """Renders Jinja2 template and imports kernel in CuPy
+
+        Parameters
+        ----------
+        name_expressions : dict
+            Dictionary of C++ functions to be compiled
+        template_kwargs : dict
+            Dictionary of template arguments to be rendered in the source code
+            using Jinja2"""
         print(f"Compiling kernel {self.__class__.__name__}...")
         code = jinja2.Template(
             self.cuda_source,
@@ -163,6 +208,20 @@ class Kernel(ABC):
     def _compile(self,
                  names: Sequence[str],
                  template_kwargs: dict) -> cp.RawModule:
+        """Compiles the kernel and caches the result
+
+        Parameters
+        ----------
+        names : Sequence[str]
+            Names of the C++ functions to be compiled
+        template_kwargs : dict
+            Dictionary of template arguments to be rendered in the source code
+            using Jinja2
+
+        Notes
+        -----
+        Technically, the kernel is only compiled when a function is retrieved
+        from it."""
         h_names = hash(frozenset(names))
         h_kwargs = hash(frozenset(template_kwargs.items()))
         if not h_names in self.__compilation_cache:
@@ -174,8 +233,6 @@ class Kernel(ABC):
                 self.__compile(names, template_kwargs)
 
         if self.__compilation_times > 5:
-            # technically the kernel is only compiled when a function
-            # is retrieved from it
             warnings.warn(
                 f"Module `{self.__class__.__name__}` has been recompiled "
                 f"5 times, consider passing limits.")

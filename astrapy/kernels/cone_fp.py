@@ -11,6 +11,8 @@ import cupy as cp
 
 
 class ConeProjection(Kernel):
+    """Conebeam forward projection kernel."""
+
     SLICES_PER_THREAD = 16
     PIXELS_IN_X_BLOCK = 32
     PIXELS_PER_Y_THREAD = 32
@@ -22,6 +24,30 @@ class ConeProjection(Kernel):
                  projs_row_major: bool = True,
                  mode_row: bool = True,
                  *args):
+        """Conebeam forward projection kernel.
+
+        Parameters
+        ----------
+        slices_per_thread : int, optional
+            Number of slices computed in one thread.
+            If `None` defaults to `SLICES_PER_THREAD`.
+        pixels_per_thread : int, optional
+            Number of pixels computed in one thread.
+            If `None` defaults to `PIXELS_PER_Y_THREAD`.
+        pixels_in_x_block : int, optional
+            Number of pixels computed in one block.
+            If `None` defaults to `PIXELS_IN_X_BLOCK`.
+        projs_row_major : bool, optional
+            If `True` the projections must be provided in row-major order.
+            If `False` the projections must be provided in column-major order.
+            Defaults to `True`.
+        mode_row : bool, optional
+            If `True` the kernel writes the result in row-major order. Choosing
+            this option is faster when the detector has more pixels in the
+            horizontal direction.
+        *args
+            Arguments passed to the `Kernel` constructor.
+        """
         self._slices_per_thread = (
             slices_per_thread if slices_per_thread is not None
             else self.SLICES_PER_THREAD)
@@ -76,7 +102,8 @@ class ConeProjection(Kernel):
         Then that thread loops through a number on pixels in the row.
         """
         if isinstance(projection_geometry, list):
-            projection_geometry = GeometrySequence.fromList(projection_geometry)
+            projection_geometry = GeometrySequence.fromList(
+                projection_geometry)
         else:
             projection_geometry = copy.deepcopy(projection_geometry)
 
@@ -88,7 +115,8 @@ class ConeProjection(Kernel):
         #   less rows and columns, the computation is silently doing
         #   something that is similar to supersampling.
         assert len(projections) == len(projection_geometry)
-        for proj, rows, cols in zip(projections, projection_geometry.detector.rows,
+        for proj, rows, cols in zip(projections,
+                                    projection_geometry.detector.rows,
                                     projection_geometry.detector.cols):
             if not isinstance(proj, cp.ndarray):
                 raise TypeError("`projections` must be a CuPy ndarray.")
