@@ -11,6 +11,9 @@ from astrapy.kernel import copy_to_texture
 from astrapy.kernels.cone_bp import ConeBackprojection
 from astrapy.kernels.cone_fp import ConeProjection
 
+import astra
+import astra.experimental
+
 
 class Projector(ABC):
     def __init__(self):
@@ -276,12 +279,13 @@ class CompatProjector(Projector, ABC):
     def volume(self, value: cp.ndarray):
         """The volume to project from.
 
+        If the volume is of the same shape as before, the ASTRA projector
+        will not be reinitialized.
+
         Parameters
         ----------
         value : array-like
             The volume to project from."""
-        del self.volume
-
         if self.volume_geometry is not None:
             expected_shape = tuple(reversed(self.volume_geometry.shape))
             if expected_shape != value.shape:
@@ -290,8 +294,9 @@ class CompatProjector(Projector, ABC):
                     f" according to the volume geometry, but got "
                     f"{value.shape} instead.")
 
+        if self._volume is not None and self._volume.shape != value.shape:
+            self._astra_projector_id = None
 
-        import astra
         # make sure CuPy doesn't clean up the volume while ASTRA is busy
         assert value.dtype == cp.float32
         assert value.flags.c_contiguous
@@ -305,6 +310,7 @@ class CompatProjector(Projector, ABC):
         """Delete the volume and clean up ASTRA projector."""
         self._volume = None
         self._astra_vol_link = None  # TODO: does this delete
+        print("Deleting projector via volume")
         self._astra_projector_id = None
 
     @property
@@ -327,13 +333,16 @@ class CompatProjector(Projector, ABC):
                                  f" geometry. Got {value.shape}, "
                                  f" expected {expected_shape}.")
 
+        if self._projections is not None \
+            and self._projections.shape != value.shape:
+            self._astra_projector_id = None
+
         # maintain proj_link if it exists
         z, y, x = value.shape
         if (self._astra_proj_link is not None
             and self._projections.shape == value.shape):
             self._projections[...] = value  # update in-place
         else:
-            import astra
             self._projections = value
             self._astra_proj_link = astra.pythonutils.GPULink(
                 self._projections.data.ptr, x, y, z, x * 4)
@@ -344,6 +353,7 @@ class CompatProjector(Projector, ABC):
         """Delete the projections and clean up ASTRA projector."""
         self._projections = None
         self._astra_proj_link = None
+        print("Deleting projector via projections")
         self._astra_projector_id = None
 
     @property
@@ -368,7 +378,6 @@ class CompatProjector(Projector, ABC):
         vol_shp = value.shape
         ext_min = value.extent_min
         ext_max = value.extent_max
-        import astra
         self._astra_vol_geom = astra.create_vol_geom(
             vol_shp[1], vol_shp[0], vol_shp[2],
             ext_min[1], ext_max[1],
@@ -380,6 +389,8 @@ class CompatProjector(Projector, ABC):
     def volume_geometry(self):
         self._vol_geom = None
         self._astra_vol_geom = None  # TODO: does this delete
+
+        print("Deleting projector via volgeom")
         self._astra_projector_id = None
 
     @property
@@ -399,7 +410,6 @@ class CompatProjector(Projector, ABC):
                 raise ValueError("Projection shape does not match projection"
                                  " geometry shape.")
 
-        import astra
         self._proj_geom = value
         det_shape = (self._proj_geom[0].detector.rows,
                      self._proj_geom[0].detector.cols)
@@ -411,6 +421,8 @@ class CompatProjector(Projector, ABC):
     def projection_geometry(self):
         self._proj_geom = None
         self._astra_proj_geom = None  # TODO: does this delete
+
+        print("Deleting projector via projgeom")
         self._astra_projector_id = None
 
     @staticmethod
@@ -431,7 +443,6 @@ class CompatProjector(Projector, ABC):
         return vectors
 
     def projector3d(self):
-        import astra
         if self._astra_projector_id is None:
             if self._astra_proj_geom is None:
                 raise RuntimeError("Projection geometries must be given before"
@@ -446,14 +457,13 @@ class CompatProjector(Projector, ABC):
                         'VolumeGeometry': self._astra_vol_geom,
                         'ProjectionGeometry': self._astra_proj_geom,
                         'options': {}}
+            print("Setting projector")
             self._astra_projector_id = astra.projector3d.create(proj_cfg)
         return self._astra_projector_id
 
 
 class AstraCompatConeProjector(CompatProjector):
     def __call__(self, additive=False):
-        import astra
-        import astra.experimental
         astra.experimental.direct_FPBP3D(
             self.projector3d(),
             self._astra_vol_link,
@@ -481,7 +491,6 @@ class AstraCompatConeBackprojector(CompatProjector):
         -------
         out : ndarray   (z, y, x) or (x, y, z) ndarray  (optional)
         """
-        import astra.experimental
         astra.experimental.direct_FPBP3D(
             self.projector3d(),
             self._astra_vol_link,
