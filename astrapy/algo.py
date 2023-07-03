@@ -1,64 +1,31 @@
 import collections
-from typing import Any, Callable, Sequence, Sized
+from typing import Any, Callable, List, Sequence, Sized
 
 import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy.operator import ConebeamTransform
-from astrapy.kernel import Kernel
-from astrapy.geom import resolve_volume_geometry
+from astrapy.geom.proj import ProjectionGeometry
 from astrapy.geom.vol import VolumeGeometry
-from astrapy.projector import ConeProjector, ConeBackprojector
-from astrapy.kernels.cone_fp import ConeProjection
+from astrapy.kernel import Kernel
 from astrapy.kernels.cone_bp import ConeBackprojection
+from astrapy.operator import ConebeamTransform
+from astrapy.processing import preweight, filter as filt
+from astrapy.projector import ConeProjector, ConeBackprojector
 
 
-def fp(
-    volume: Any,
-    geometry: Any,
-    volume_extent_min: Sequence = None,
-    volume_extent_max: Sequence = None,
-    volume_voxel_size: Sequence = None,
-    out: Sized = None,
-    kernel: Kernel = None,
-    verbose: bool = False):
-    """
-    
-    :type volume: object
-        If `None` an `ndarray` is created on CPU, to save GPU memory.
-        Then the result is transferred chunk-after-chunk to the CPU array.
-        However, if a GPU array is given, no transfers are initiated.
-    :type sinogram: object
-        If `None` an `ndarray` is created on CPU, to save GPU memory.
-        Then the result is transferred chunk-after-chunk to the CPU array.
-        However, if a GPU array is given, no transfers are initiated.
-    :type chunk_size: int
-        If `None` all sinogram is processed at once. This might lead to a
-        GPU memory overflow of some sort. When an integer is given, will
-        upload and launch a kernel for each consecutive chunk of `sinogram`
-        and `geometry`.
-    """
-    # ptor = ConeProjector(ConeProjection() if kernel is None else kernel)
-    # ptor.projection_geometry = geometry
-    # ptor.volume = volume.astype(np.float32)
-    volume_geometry = resolve_volume_geometry(
-        volume.shape, volume_extent_min, volume_extent_max,
-        volume_voxel_size, geometry, verbose=verbose)
-    # ptor.projections = cp.zeros((len(geometry), geometry[0].detector.rows,
-    #                                 geometry[0].detector.cols), cp.float32)
-    # result = ptor()
-    op = ConebeamTransform(geometry, volume_geometry)
+def fp(volume: Any, projection_geometry: Any, volume_geometry: Any,
+       out: Sized = None):
+    op = ConebeamTransform(projection_geometry, volume_geometry)
+    vol = cp.asarray(volume, dtype=cp.float32)
+    result = op(vol, out=out)
     return result.get() if out is None else out
 
 
 def bp(
     projections: Any,
-    projection_geometry: Any,
-    volume_shape: Sequence,
-    volume_extent_min: Sequence = None,
-    volume_extent_max: Sequence = None,
-    volume_voxel_size: Sequence = None,
+    projection_geometry: List[ProjectionGeometry],
+    volume_geometry: VolumeGeometry,
     filter: Any = None,
     preproc_fn: Callable = None,
     verbose: bool = False,
@@ -85,56 +52,48 @@ def bp(
         and `geometry`.
 
     """
-    vol_geom = resolve_volume_geometry(
-        shape=np.asarray(volume_shape),
-        extent_min=np.asarray(volume_extent_min),
-        extent_max=np.asarray(volume_extent_max),
-        verbose=verbose)
+    if out is None:
+        out = cp.zeros(volume_geometry.shape, cp.float32)
+    else:
+        out = cp.asarray(out, dtype=cp.float32)
+
+    if preproc_fn is not None:
+        preproc_fn(projections, projection_geometry)
+    if filter is not None:
+        preweight(projections, projection_geometry)
+        filt(projections, filter=filter)
     ptor = ConeBackprojector(
         ConeBackprojection() if kernel is None else kernel,
-        filter=filter,
-        preproc_fn=preproc_fn,
-        verbose=verbose,
-        **kwargs)
-    volume = out if out is not None else cp.zeros(vol_geom.shape, cp.float32)
-    ptor.projections = projections
-    ptor.volume = volume
+        verbose=verbose, **kwargs)
     ptor.projection_geometry = projection_geometry
-    ptor.volume_geometry = vol_geom
-    result = ptor()
-    return result.get() if out is None else out
+    ptor.volume_geometry = volume_geometry
+    ptor.projections = projections
+    ptor.volume = out
+    ptor()
+    return out.get()
 
 
 def fdk(
     projections: Any,
-    geometry: Any,
-    volume_shape: Sequence,
-    volume_extent_min: Sequence = None,
-    volume_extent_max: Sequence = None,
-    volume_voxel_size: Sequence = None,
+    projection_geometry: Any,
+    volume_geometry: VolumeGeometry,
     filter: Any = 'ramlak',
     preproc_fn: Callable = None,
     **kwargs):
     """Feldkamp-Davis-Kress algorithm"""
 
     return bp(projections,
-              geometry,
-              volume_shape,
-              volume_extent_min,
-              volume_extent_max,
-              volume_voxel_size,
-              filter=filter,  # just bp with filter
+              projection_geometry,
+              volume_geometry,
+              filter=filter,  # just bp with a filter
               preproc_fn=preproc_fn,
               **kwargs)
 
 
 def sirt(
     projections: np.ndarray,
-    geometry: Any,
-    volume_shape: Sequence,
-    volume_extent_min: Sequence = None,
-    volume_extent_max: Sequence = None,
-    volume_voxel_size: Sequence = None,
+    projection_geometry: Any,
+    volume_geometry: VolumeGeometry,
     iters: int = 100,
     dtype=cp.float32,
     verbose: bool = True,
@@ -153,19 +112,11 @@ def sirt(
 
     Parameters
     ----------
-    volume_voxel_size
-    volume_extent_max
-    volume_extent_min
-    geometry
+
     """
-    if len(projections) != len(geometry):
+    if len(projections) != len(projection_geometry):
         raise ValueError("Number of projections does not match number of"
                          " geometries.")
-
-    vol_geom = resolve_volume_geometry(
-        volume_shape, volume_extent_min, volume_extent_max,
-        volume_voxel_size, geometry, verbose=verbose)
-
     if algo == 'cpu':
         xp_proj = np
     elif algo == 'gpu':
@@ -177,19 +128,22 @@ def sirt(
 
     # prevent copying if already in GPU memory, otherwise copy to GPU
     y = [xp_proj.array(p, copy=False) for p in projections]
-    x = xp_vol.zeros(vol_geom.shape, dtype)  # output volume
+    x = xp_vol.zeros(volume_geometry.shape, dtype)  # output volume
     x_tmp = xp_vol.ones_like(x)
+
     fptor = ConeProjector()
-    fptor.projection_geometry = geometry
-    fptor.volume_geometry = vol_geom
-    bptor = ConeBackprojector()
-    bptor.projection_geometry = geometry
-    bptor.volume_geometry = vol_geom
+    fptor.projection_geometry = projection_geometry
+    fptor.volume_geometry = volume_geometry
+
+    bptor = ConeBackprojector(texture_type='pitch2d')
+    bptor.projection_geometry = projection_geometry
+    bptor.volume_geometry = volume_geometry
 
     def A(x, out=None):
         if out is None:
-            out = xp_proj.zeros((len(geometry), geometry[0].detector.rows,
-                                 geometry[0].detector.cols), dtype)
+            out = xp_proj.zeros((len(projection_geometry),
+                                 projection_geometry[0].detector.rows,
+                                 projection_geometry[0].detector.cols), dtype)
         fptor.volume = x
         fptor.projections = out
         return fptor()
@@ -199,7 +153,8 @@ def sirt(
             out = xp_vol.zeros(x.shape, dtype=cp.float32)
         bptor.projections = y
         bptor.volume = out
-        return bptor()
+        bptor()
+        return out
 
     if mask is not None:
         mask = xp_vol.asarray(mask, dtype)
@@ -230,11 +185,8 @@ def sirt(
 
     bar = tqdm(range(iters), disable=not verbose, desc="SIRT")
     for i in bar:
-        # Note, not using `out`: `y_tmp` is not recycled because it would
-        # require `y_tmp` and its texture counterpart to be in memory at
-        # the same time. We take the memory-friendly and slightly more GPU
-        # intensive approach here.
-        # y_tmp = A(x)  # forward project `x` into `y_tmp`
+        # Note, a choice made here is to keep `y_tmp` in GPU memory. This
+        # requires more GPU memory, but is faster than the alternative.
         A(x, out=y_tmp)
 
         # compute residual in `y_tmp`, apply R

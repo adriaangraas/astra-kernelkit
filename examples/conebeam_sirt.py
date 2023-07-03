@@ -9,24 +9,26 @@ geom_t0 = ap.ProjectionGeometry(
     [0, 1, 0],
     [0, 0, 1],
     ap.Detector(99, 141, .01, .01))
-
 geom_t0 = ap.rotate(geom_t0, yaw=.5 * np.pi, roll=.2 * np.pi, pitch=.1 * np.pi)
 angles = np.linspace(0, 2 * np.pi, 300, False)
 geoms = [ap.rotate(geom_t0, yaw=a) for a in angles]
-vol_min, vol_max = [-.2] * 3, [.2] * 3
+vol_geom = ap.resolve_volume_geometry(
+    shape=[150] * 3,
+    extent_min=[-.2] * 3,
+    extent_max=[.2] * 3)
 
 # cube with random voxels
-vol = np.zeros([150] * 3)
+vol = np.zeros(vol_geom.shape)
 vol[25:75, 25:75, 25:75] = np.random.random([50] * 3)
 vol[35:65, 35:65, 35:65] += np.random.random([30] * 3)
 vol[45:55, 45:55, 45:55] += 1.
+vol = vol.transpose((2, 1, 0))
 
 # forward project
-projs = ap.fp(vol, geoms, vol_min, vol_max)
-
+projs = ap.fp(vol, geoms, vol_geom)
 
 def callbackf(i, x, y):
-    if i % 50 == 0:
+    if i % 100 == 0:
         plt.figure(1)
         for p in y[::16]:
             plt.cla()
@@ -45,11 +47,10 @@ def callbackf(i, x, y):
 vol2 = ap.sirt(
     projs,
     geoms,
-    vol.shape,
-    vol_min,
-    vol_max,
-    iters=200,
-    callback=callbackf)
+    vol_geom,
+    iters=2000,
+    # callback=callbackf
+)
 
 plt.figure(2)
 for sl in range(25, vol2.shape[-1]):

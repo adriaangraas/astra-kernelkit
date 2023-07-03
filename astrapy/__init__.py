@@ -3,5 +3,4 @@ from .data import *
 from .geom import resolve_volume_geometry
 from .geom.proj import *
 from .geom.vol import *
-from .process import *
 from .operator import *

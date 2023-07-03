@@ -5,7 +5,7 @@ import numpy as np
 
 """Pitched memory utilities."""
 
-_PITCH = 32  # the default CUDA pitch in bytes
+_CUDA_PITCH = 32  # the default CUDA pitch in bytes
 
 
 def pitched_shape(array) -> Tuple[int, int, int]:
@@ -22,8 +22,8 @@ def pitched_shape(array) -> Tuple[int, int, int]:
     tuple
         The pitched shape of the array.
     """
-    bytes = (int(np.ceil(array.shape[-1] * array.dtype.itemsize / _PITCH))
-             * _PITCH)
+    bytes = (int(np.ceil(array.shape[-1] * array.dtype.itemsize / _CUDA_PITCH))
+             * _CUDA_PITCH)
     items = bytes / array.dtype.itemsize
     assert items.is_integer()
     return *array.shape[:-1], int(items)

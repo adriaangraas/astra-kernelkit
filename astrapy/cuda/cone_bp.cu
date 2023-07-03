@@ -90,9 +90,18 @@ __global__ void cone_bp(
 				U = numU * r;
 				V = numV * r;
 {% if texture3D %}
-				float val = tex3D<float>(projTexture, U, V, j + .5f);
+    {% set ax = ['j + .5f', 'V', 'U'] %}
+				float val = tex3D<float>(
+				    projTexture,
+				    {{ ax[projection_axes[2]] }},
+                    {{ ax[projection_axes[1]] }},
+                    {{ ax[projection_axes[0]] }});
 {% else %}
-                float val = tex2D<float>(projTextures[j], U, V);
+    {% set ax = ['j', 'V', 'U'] %}
+                float val = tex2D<float>(
+                    projTextures[{{ ax[projection_axes[0]] }}],
+                    {{ ax[projection_axes[2]] }},
+                    {{ ax[projection_axes[1]] }});
 {% endif %}
 				Z[i] += r * r * val;
 				numU += nU.z;

@@ -33,12 +33,12 @@ IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 """
 from functools import lru_cache
-
+from typing import List
 import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy.geom import ProjectionGeometry
+from astrapy.geom.proj import ProjectionGeometry
 
 
 @lru_cache
@@ -55,6 +55,16 @@ def _filter(num, filter_name: str = "ramlak", use_cupy: bool = True):
     up as a "cupping effect" in the reconstruction.
 
     See Kak & Slaney, Chapter 3.
+
+    Parameters
+    ----------
+    num : int
+        The number of samples in the filter.
+    filter_name : str, optional
+        The name of the filter to use. Can be one of "ramp", "ramlak",
+        "cosine". If you need a different filter please file an issue.
+    use_cupy : bool, optional
+        Whether to use cupy or numpy.
     """
     assert num % 2 == 0, "Filter must be even."
     xp = cp if use_cupy else np
@@ -77,29 +87,46 @@ def _filter(num, filter_name: str = "ramlak", use_cupy: bool = True):
 
 
 def filter(projections, verbose: bool = False, filter: str = 'ramlak'):
-    if filter == 'ramlak_fourier':
-        # TODO(Adriaan): remove
-        return _ramlak_filter_fourier(projections, verbose)
-    else:
-        xp = cp.get_array_module(projections[0])
-        # this function follows structurally scikit-image's iradon()
-        padding_shape = max(64, int(2 ** int(
-            xp.ceil(xp.log2(2 * projections[0].shape[1])))))
-        four_filt = _filter(padding_shape, filter_name=filter,
-                            use_cupy=xp == cp)
-        p_tmp = xp.empty((projections[0].shape[0], padding_shape))
-        for p in tqdm(projections, desc="Filtering", disable=not verbose):
-            assert cp.get_array_module(p) == xp, (
-                "Arrays need to be all cupy or all numpy.")
-            p_tmp[...] = xp.pad(
-                p, ((0, 0), (0, padding_shape - projections[0].shape[1])),
-                mode='constant', constant_values=0)
-            f = xp.fft.fft(p_tmp) * four_filt  # complex mult
-            p_tmp[...] = xp.real(xp.fft.ifft(f, n=p_tmp.shape[1]))
-            p[...] = p_tmp[..., :p.shape[1]]
+    """Filter in Fourier domain
+
+    Parameters
+    ----------
+    projections : list of numpy.ndarray or cupy.ndarray
+        The projections to filter.
+    verbose : bool, optional
+        Whether to show a progress bar.
+    filter : str, optional
+        The name of the filter to use. Can be one of "ramp", "ramlak", "cosine".
+        If you need a different filter please file an issue.
+    """
+    xp = cp.get_array_module(projections[0])
+    # this function follows structurally scikit-image's iradon()
+    padding_shape = max(64, int(2 ** int(
+        xp.ceil(xp.log2(2 * projections[0].shape[1])))))
+    four_filt = _filter(padding_shape, filter_name=filter,
+                        use_cupy=xp == cp)
+    p_tmp = xp.empty((projections[0].shape[0], padding_shape))
+    for p in tqdm(projections, desc="Filtering", disable=not verbose):
+        assert cp.get_array_module(p) == xp, (
+            "Arrays need to be all cupy or all numpy.")
+        p_tmp[...] = xp.pad(
+            p, ((0, 0), (0, padding_shape - projections[0].shape[1])),
+            mode='constant', constant_values=0)
+        f = xp.fft.fft(p_tmp) * four_filt  # complex mult
+        p_tmp[...] = xp.real(xp.fft.ifft(f, n=p_tmp.shape[1]))
+        p[...] = p_tmp[..., :p.shape[1]]
 
 
-def _ramlak_filter_fourier(projections, verbose=False):
+def _ramlak_filter_fourier(projections: cp.ndarray, verbose=False):
+    """Filter in Fourier domain
+
+    I have left this function in for reference, but it is not used. It is
+    known to introduce discretization errors.
+
+    Parameters
+    ----------
+    projections : list of numpy.ndarray or cupy.ndarray
+    """
     xp = cp.get_array_module(projections[0])
     ramlak = xp.linspace(-1, 1, num=projections[0].shape[1] // 2 + 1)
     ramlak = xp.abs(ramlak)
@@ -111,11 +138,24 @@ def _ramlak_filter_fourier(projections, verbose=False):
         p[...] = xp.fft.irfft(xp.fft.ifftshift(f), n=p.shape[1])
 
 
-def preweight(projections,
+def preweight(projections: cp.ndarray,
               geoms: list[ProjectionGeometry],
-              detector_piercings: list = None,
+              detector_piercings: List = None,
               verbose: bool = False):
-    """Pixelwise rescaling to compensate for ray length in conebeam images"""
+    """Pixelwise rescaling to compensate for ray length in conebeam images
+
+    Parameters
+    ----------
+    projections : list of numpy.ndarray or cupy.ndarray
+        The projections to filter.
+    geoms : list of ProjectionGeometry
+        The geometries of the projections.
+    detector_piercings : list of numpy.ndarray, optional
+        The piercing points of the central ray through the detector. If not
+        given, the detector midpoint position is used.
+    verbose : bool, optional
+        Whether to show a progress bar.
+    """
     xp = cp.get_array_module(projections[0])
     # prepare computation of all pixel vectors
     rows, cols = xp.mgrid[0:geoms[0].detector.rows, 0:geoms[0].detector.cols]
@@ -123,7 +163,7 @@ def preweight(projections,
     cols_view = xp.repeat(cols[:, :, xp.newaxis], 3, 2)
 
     for i, (p, g) in enumerate(tqdm(zip(projections, geoms),
-                     disable=not verbose, desc="Preweighting")):
+                                    disable=not verbose, desc="Preweighting")):
         assert cp.get_array_module(p) == xp, (
             "Arrays need to be all cupy or all numpy.")
         piercing_point = (g.detector_position if detector_piercings is None
@@ -132,5 +172,6 @@ def preweight(projections,
         pixels = (xp.array(g.detector_extent_min)
                   + cols_view * xp.array(g.u * g.detector.pixel_width)
                   + rows_view * xp.array(g.v * g.detector.pixel_height))
-        pixel_rays = xp.linalg.norm(pixels - xp.array(g.source_position), axis=2)
+        pixel_rays = xp.linalg.norm(pixels - xp.array(g.source_position),
+                                    axis=2)
         p *= xp.divide(central_ray, pixel_rays)

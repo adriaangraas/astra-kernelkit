@@ -1,6 +1,6 @@
 import copy
 from math import ceil
-from typing import Any, Sequence, Sized
+from typing import Any, Sequence, Sized, Tuple
 
 from astrapy.geom import normalize_
 from astrapy.geom.proj import GeometrySequence
@@ -21,8 +21,8 @@ class ConeProjection(Kernel):
                  slices_per_thread: int = None,
                  pixels_per_thread: int = None,
                  pixels_in_x_block: int = None,
-                 projs_row_major: bool = True,
-                 mode_row: bool = True,
+                 volume_axes: Tuple = (0, 1, 2),
+                 projection_axes: Tuple = (0, 1, 2),
                  *args):
         """Conebeam forward projection kernel.
 
@@ -37,14 +37,16 @@ class ConeProjection(Kernel):
         pixels_in_x_block : int, optional
             Number of pixels computed in one block.
             If `None` defaults to `PIXELS_IN_X_BLOCK`.
-        projs_row_major : bool, optional
-            If `True` the projections must be provided in row-major order.
-            If `False` the projections must be provided in column-major order.
-            Defaults to `True`.
-        mode_row : bool, optional
-            If `True` the kernel writes the result in row-major order. Choosing
-            this option is faster when the detector has more pixels in the
-            horizontal direction.
+        volume_axes : tuple, optional
+            Axes of the reconstruction volume. Defaults to `(0, 1, 2)`. The
+            axes correspond to 'x', 'y', and 'z', respectively. 'x' is the
+            source-detector axis, 'y' the orthogonal axis in the horizontal
+            plane, and 'z' the vertical axis. ASTRA Toolbox uses `(2, 1, 0)`.
+        projection_axes : tuple, optional
+            Axes of the projection data. Defaults to `(0, 1, 2)`. Axis 0
+            corresponds to the projection angle, axis 1 to the detector
+            column, and axis 2 to the detector row. ASTRA Toolbox uses
+            `(1, 0, 2)` for this parameter.
         *args
             Arguments passed to the `Kernel` constructor.
         """
@@ -57,14 +59,12 @@ class ConeProjection(Kernel):
         self._pixels_in_x_block = (
             pixels_in_x_block if pixels_in_x_block is not None
             else self.PIXELS_IN_X_BLOCK)
-        self._projs_row_major = projs_row_major
-        self._mode_row = mode_row
-        if self._mode_row is False:
-            raise NotImplementedError("This implementation is not yet working"
-                                      " as expected.")
+        self._volume_axes = volume_axes
+        self._projection_axes = projection_axes
         super().__init__('cone_fp.cu', *args)
 
-    def _get_names(self):
+    @staticmethod
+    def _get_names():
         return (f'cone_fp<DIR_X>', f'cone_fp<DIR_Y>', f'cone_fp<DIR_Z>')
 
     def compile(self, nr_projs):
@@ -73,8 +73,8 @@ class ConeProjection(Kernel):
             template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
                              'pixels_per_thread': self.PIXELS_PER_Y_THREAD,
                              'nr_projs_global': nr_projs,
-                             'mode_row': self._mode_row,
-                             'projs_row_major': self._projs_row_major})
+                             'volume_axes': self._volume_axes,
+                             'projection_axes': self._projection_axes,})
 
     def __call__(
         self,
@@ -82,7 +82,6 @@ class ConeProjection(Kernel):
         volume_geometry: VolumeGeometry,
         projection_geometry: Sequence,
         projections: Sized,
-        volume_rotation: Sequence = (0., 0., 0.),
         rays_per_pixel: int = 1
     ):
         """Forward projection with conebeam geometry.
@@ -100,6 +99,22 @@ class ConeProjection(Kernel):
          - owns a consecutive sequence of projection angles.
         and runs a thread for each combination (pixel-u, projection-angle).
         Then that thread loops through a number on pixels in the row.
+
+        Parameters
+        ----------
+        volume_texture : cupy.cuda.texture.TextureObject
+            3D texture object with the reconstruction volume in the axes
+            specified by `volume_axes` in the constructor.
+        volume_geometry : VolumeGeometry
+            Geometry of the reconstruction volume.
+        projection_geometry : Sequence of ProjectionGeometry
+            Geometry of the projection data.
+        projections : Sequence of cupy.ndarray or cp.ndarray
+            Projection data. Either provided as a list of 2D arrays or
+            as a single 3D array. The shape of the array-like object must be
+            according to the `projection_axes` specified in the constructor.
+        rays_per_pixel : int, optional
+            Supersampling is currently not supported.
         """
         if isinstance(projection_geometry, list):
             projection_geometry = GeometrySequence.fromList(
@@ -107,47 +122,54 @@ class ConeProjection(Kernel):
         else:
             projection_geometry = copy.deepcopy(projection_geometry)
 
-        # TODO(Adriaan): explicitly formalize that multiple detectors is
-        #   problematic atm. Maybe consider more advanced geometries where
-        #   the detector is shared.
-        #   Note that multiple detectors might not be a problem, they
-        #   just render different u's and v's, and if they factually have
-        #   less rows and columns, the computation is silently doing
-        #   something that is similar to supersampling.
-        assert len(projections) == len(projection_geometry)
-        for proj, rows, cols in zip(projections,
-                                    projection_geometry.detector.rows,
-                                    projection_geometry.detector.cols):
-            if not isinstance(proj, cp.ndarray):
-                raise TypeError("`projections` must be a CuPy ndarray.")
-            if proj.dtype not in self.SUPPORTED_DTYPES:
-                raise NotImplementedError(
-                    f"Currently there is only support for "
-                    f"dtype={self.SUPPORTED_DTYPES}.")
-            if self._projs_row_major:
-                if proj.shape != (rows, cols):
-                    raise ValueError("Projection shapes need to "
-                                     "match detector (rows, cols) or "
-                                     "set `proj_rows_major` to `False`.")
-            else:
-                if proj.shape != (cols, rows):
-                    raise ValueError("Projection shapes need to "
-                                     "match detector (cols, rows) or "
-                                     "set `projs_rows_major`.")
-            if not proj.flags['C_CONTIGUOUS']:
-                raise ValueError("Projection data must be C-contiguous in "
-                                 "memory.")
-
-        if rays_per_pixel != 1:
-            raise NotImplementedError(
-                "Detector supersampling is currently not supported.")
-
-        volume_shape = texture_shape(volume_texture)
+        volume_shape = volume_geometry.shape
         if not volume_geometry.has_isotropic_voxels():
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
 
+        assert volume_texture is not None
+        if isinstance(projections, list):
+            if self._projection_axes[0] == 0:
+                len_dim_0 = len(projection_geometry)
+                err = "projections"
+            elif self._projection_axes[1] == 0:
+                len_dim_0 = projection_geometry[0].detector.rows
+                err = "detector rows"
+            else:
+                len_dim_0 = projection_geometry[0].detector.cols
+                err = "detector columns"
+            if len(projections) != len_dim_0:
+                raise ValueError(
+                    f"The length of projection array must match the number of "
+                    f" {err} in the projection geometry, as the first axis "
+                    f" `projection_axes`, {self._projection_axes[0]}, is used.")
+
+            # TODO(Adriaan): Checking other axes is hard, because looping the
+            #                projections and validating the row/column shapes
+            #                is not efficient. This is probably because D2H
+            #                transfers are incurred when checking a CuPy array
+            #                shape.
+
+            for arr in projections:  # regardless of axes format used
+                if not arr.flags['C_CONTIGUOUS']:
+                    raise ValueError(
+                        f"Projection data must be C-contiguous, but got "
+                        f"non-contiguous array.")
+                if not isinstance(arr, cp.ndarray):
+                    raise TypeError(
+                        f"Projection data must be of type `cupy.ndarray`, but "
+                        f"got {type(arr)}.")
+                if arr.dtype not in self.SUPPORTED_DTYPES:
+                    raise NotImplementedError(
+                        f"Currently there is only support for dtypes "
+                        f"{self.SUPPORTED_DTYPES}, but got {arr.dtype}.")
+
+        if rays_per_pixel != 1:
+            raise NotImplementedError(
+                "Detector supersampling is currently not supported.")
+
+        # TODO: do not do D2H here to support CUDA graphs
         proj_ptrs = [p.data.ptr for p in projections]
         assert len(proj_ptrs) == len(set(proj_ptrs)), (
             "All projection files need to reside in own memory.")
@@ -176,7 +198,7 @@ class ConeProjection(Kernel):
                      i,  # start slice
                      start,  # projection
                      *volume_shape,
-                     rows, cols,
+                     len(projection_geometry), rows, cols,
                      *cp.float32(output_scale[axis])))
 
         # directions of ray for each projection (a number: 0, 1, 2)
@@ -189,7 +211,7 @@ class ConeProjection(Kernel):
                 projection_geometry.source_position - projection_geometry.detector_position),
                 axis=1, dtype=cp.int32).get()
         else:
-            raise Exception("Geometry computation backend not understood.")
+            raise Exception("Unknown array module type of geometry.")
 
         # Run over all angles, grouping them into groups of the same
         # orientation (roughly horizontal vs. roughly vertical).

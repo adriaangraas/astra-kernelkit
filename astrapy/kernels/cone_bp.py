@@ -15,12 +15,13 @@ class ConeBackprojection(Kernel):
     VOXELS_PER_BLOCK = (16, 32, 6)
     LIMIT_PROJS_PER_BLOCK = 32
     MAX_PROJS = 1024
-    NUM_STREAMS = 2
 
     def __init__(self,
                  max_projs: int = None,
                  voxels_per_block: tuple = None,
-                 limit_projs_per_block: int = None):
+                 limit_projs_per_block: int = None,
+                 volume_axes: tuple = (0, 1, 2),
+                 projection_axes: tuple = (0, 1, 2)):
         """Conebeam backprojection kernel.
 
         Parameters
@@ -34,6 +35,14 @@ class ConeBackprojection(Kernel):
         limit_projs_per_block : int, optional
             Maximum number of projections processed in one thread block.
             If `None` defaults to `LIMIT_PROJS_PER_BLOCK`.
+        volume_axes : tuple, optional
+            Axes of the backprojection volume. Defaults to `(0, 1, 2)`.
+            The axes are in the order x, y, z. The first axis is the source-
+            detector axis, the second is the horizontal orthogonal axis and
+            the third is the vertical axis. ASTRA Toolbox uses (2, 1, 0).
+        projection_axes : tuple, optional
+            Axes of the projections to be backprojected. Defaults to
+            `(0, 1, 2)`. The axes are in the order angle, row, column.
         """
         super().__init__('cone_bp.cu')
         self._min_limit_projs = (max_projs if max_projs is not None
@@ -43,6 +52,8 @@ class ConeBackprojection(Kernel):
         self._limit_projs_per_block = (
             limit_projs_per_block if limit_projs_per_block is not None
             else self.LIMIT_PROJS_PER_BLOCK)
+        self._vol_axs = volume_axes
+        self._proj_axs = projection_axes
 
     def compile(self, nr_projs: int = None,
                 use_texture_3d: bool = True) -> cp.RawModule:
@@ -70,10 +81,12 @@ class ConeBackprojection(Kernel):
                              'nr_vxls_block_z': self._vox_block[2],
                              'nr_projs_block': self._limit_projs_per_block,
                              'nr_projs_global': nr_projs_global,
-                             'texture3D': use_texture_3d})
+                             'texture3D': use_texture_3d,
+                             'volume_axes': self._vol_axs,
+                             'projection_axes': self._proj_axs})
 
     def __call__(self,
-                 projections_textures: Any,
+                 textures: Any,
                  params: Sequence,
                  volume: cp.ndarray,
                  volume_geometry: VolumeGeometry):
@@ -81,7 +94,7 @@ class ConeBackprojection(Kernel):
 
         Parameters
         ----------
-        projections_textures : list[TextureObject] or TextureObject
+        textures : list[TextureObject] or TextureObject
             If `TextureObject` the kernel compiles with `texture3D` spec,
             and the kernel expects a 3D contiguous texture block and uses
             `tex3D()` to access it.
@@ -106,45 +119,35 @@ class ConeBackprojection(Kernel):
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
 
-        if isinstance(projections_textures, list):
-            # TODO(Adriaan): this terribly slows down! don't run!
-            # for i, p in enumerate(projections_textures):
-            #     if (not _texture_shape(p) ==
-            #             (geometries.detector.rows[i],
-            #              geometries.detector.cols[i])):
-            #         raise ValueError("Projection texture resource needs to"
-            #                          " match the detector dimensions in the"
-            #                          " geometries.")
-            compile_use_texture3D = False
-            projections = cp.array([p.ptr for p in projections_textures])
-        elif isinstance(projections_textures, TextureObject):
-            compile_use_texture3D = True
-            projections = projections_textures
+        compile_texture_3d = isinstance(textures, TextureObject)
+        if isinstance(textures, cp.ndarray):
+            if not textures.dtype == cp.int64:
+                raise ValueError("Please give in an array of pointers to "
+                                 "TextureObject, or one 3D TextureObject.")
+        elif isinstance(textures, TextureObject):
+            pass
         else:
-            raise ValueError("Please give in a list of 2D TextureObject, or "
-                             "one 3D TextureObject.")
+            raise ValueError("Please give in an array of pointers to "
+                             "TextureObject, or one 3D TextureObject.")
 
-        module = self.compile(len(params), compile_use_texture3D)
+        module = self.compile(len(params), compile_texture_3d)
         cone_bp = module.get_function("cone_bp")
         copy_to_symbol(module, 'params', params.flatten())
 
         # TODO(Adriaan): better to have SoA instead AoS?
-        blocks = np.ceil(np.asarray(volume.shape) / self._vox_block).astype(
+        volume_shape = volume_geometry.shape
+        blocks = np.ceil(np.asarray(volume_shape) / self._vox_block).astype(
             np.int32)
-        streams = [cp.cuda.stream.Stream(non_blocking=True)
-                   for _ in range(self.NUM_STREAMS)]
         for i, start in enumerate(
             range(0, len(params), self._limit_projs_per_block)):
-            with streams[i % len(streams)]:
-                cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
-                        (self._vox_block[0], self._vox_block[1]),  # threads
-                        (projections,
-                         volume,
-                         start,
-                         len(params),
-                         *volume.shape,
-                         cp.float32(volume_geometry.voxel_volume)))
-        [s.synchronize() for s in streams]
+            cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
+                    (self._vox_block[0], self._vox_block[1]),  # threads
+                    (textures,
+                     volume,
+                     start,
+                     len(params),
+                     *volume_shape,
+                     cp.float32(volume_geometry.voxel_volume)))
 
     @staticmethod
     def geoms2params(projection_geometry, volume_geometry: VolumeGeometry):

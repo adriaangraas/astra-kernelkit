@@ -12,16 +12,19 @@ geom_t0 = ap.rotate(geom_t0, yaw=.5 * np.pi, roll=.2 * np.pi, pitch=.1 * np.pi)
 # angles from 0 to 2pi, 719 projections
 angles = np.linspace(0, 2 * np.pi, 719, False)
 geoms = [ap.rotate(geom_t0, yaw=a) for a in angles]
-vol_min, vol_max = [-.2, -.2 * 1.1, -.2 * 1.2], [.2, .2 * 1.1, .2 * 1.2]
+vol_geom = ap.resolve_volume_geometry(
+    shape=[100, 110, 120],
+    extent_min=[-.2, -.2 * 1.1, -.2 * 1.2],
+    extent_max=[.2, .2 * 1.1, .2 * 1.2])
 
 # cube with random voxels
-vol = np.zeros([100, 110, 120])  # x, y, z
+vol = np.zeros(vol_geom.shape)
 vol[25:75, 25:75, 25:75] = np.random.random([50] * 3)
 vol[35:65, 35:65, 35:65] += np.random.random([30] * 3)
 vol[45:55, 45:55, 45:55] += 1.
 
 # forward project
-projs = ap.fp(vol, geoms, vol_min, vol_max)
+projs = ap.fp(vol, geoms, vol_geom)
 plt.figure()
 for p in projs[0:100:4]:
     plt.cla()
@@ -30,7 +33,7 @@ for p in projs[0:100:4]:
 plt.close()
 
 # backproject
-vol2 = ap.fdk(projs, geoms, vol.shape, vol_min, vol_max, verbose=True)
+vol2 = ap.fdk(projs, geoms, vol_geom)
 plt.figure()
 for sl in range(0, vol2.shape[-2], 4):
     plt.cla()

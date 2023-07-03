@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 import cupy as cp
-from astrapy.projector import (ConeProjector, ConeBackprojector,
-                               AstraCompatConeProjector,
-                               AstraCompatConeBackprojector)
+
+from astrapy.geom.vol import VolumeGeometry
+from astrapy.geom.proj import ProjectionGeometry
+from astrapy.projector import (BaseProjector, ConeProjector, ConeBackprojector)
 
 
 class Operator(ABC):
@@ -31,10 +32,10 @@ class Operator(ABC):
 
 class XrayTransform(Operator):
     def __init__(self,
-                 projection_geometry: Any,
-                 volume_geometry: Any,
-                 projector: Callable,
-                 backprojector: Callable,
+                 projection_geometry: List[ProjectionGeometry],
+                 volume_geometry: VolumeGeometry,
+                 projector: BaseProjector,
+                 backprojector: BaseProjector,
                  volume_axes: Tuple = (0, 1, 2),
                  projection_axes: Tuple = (0, 1, 2)):
         self.projector = projector
@@ -59,6 +60,10 @@ class XrayTransform(Operator):
 
     def __call__(self, input: cp.ndarray, out: Optional[cp.ndarray] = None):
         """Project a volume onto a set of projections."""
+        if input.shape != self.domain_shape:
+            raise ValueError(f"Input shape {input.shape} does not match "
+                             f"domain shape {self.domain_shape} of "
+                             f"operator.")
         if out is None:
             out = cp.zeros(self.range_shape, dtype=cp.float32)
         self.projector.volume = input
@@ -72,10 +77,10 @@ class XrayTransform(Operator):
         class _Adjoint(Operator):
             def __init__(self):
                 self.projector = self_.backprojector
-                self.projector.projection_geometry = (self_.projector.
-                                                      projection_geometry)
-                self.projector.volume_geometry = (self_.projector.
-                                                  volume_geometry)
+                self.projector.projection_geometry = (
+                    self_.projector.projection_geometry)
+                self.projector.volume_geometry = (
+                    self_.projector.volume_geometry)
 
             @property
             def domain_shape(self) -> Tuple:
@@ -87,11 +92,17 @@ class XrayTransform(Operator):
 
             def __call__(self, input: cp.ndarray, out=None):
                 """Backproject a set of projections into a volume."""
+                if input.shape != self.domain_shape:
+                    raise ValueError(f"Input shape {input.shape} does not "
+                                     f"match domain shape "
+                                     f"{self.domain_shape} of operator.")
+
                 if out is None:
                     out = cp.zeros(self.range_shape, dtype=cp.float32)
                 self.projector.projections = input
                 self.projector.volume = out
-                return self.projector()
+                self.projector()
+                return out
 
             @property
             def T(self):
@@ -110,17 +121,25 @@ class ConebeamTransform(XrayTransform):
                  projection_axes: Tuple = (0, 1, 2),
                  astra_compat: bool = False):
         if astra_compat:
+            from astrapy.astra_compat import (CompatConeProjector,
+                                              CompatConeBackprojector)
             if projection_axes != (1, 0, 2):
-                raise ValueError("ASTRA Toolbox compatible format can only"
-                                 " be used with `projection_axes=(1, 0, 2)`.")
+                raise ValueError("ASTRA Toolbox compatible projectors can only"
+                                 " be used with `projection_axes=(1, 0, 2)`."
+                                 " Simply set `projection_axes=(1, 0, 2)` and"
+                                 " transpose the input.")
             if volume_axes != (2, 1, 0):
-                raise ValueError("ASTRA Toolbox compatible format can only"
-                                 " be used with `volume_axes=(2, 1, 0)`.")
-            projector = AstraCompatConeProjector()
-            backprojector = AstraCompatConeBackprojector()
+                raise ValueError("ASTRA Toolbox compatible projectors can only"
+                                 " be used with `volume_axes=(2, 1, 0)`. "
+                                 " Simply set `volume_axes=(2, 1, 0)` and "
+                                 " transpose the input.")
+            projector = CompatConeProjector()
+            backprojector = CompatConeBackprojector()
         else:
-            projector = ConeProjector()
-            backprojector = ConeBackprojector()
+            projector = ConeProjector(volume_axes=volume_axes,
+                                      projection_axes=projection_axes)
+            backprojector = ConeBackprojector(volume_axes=volume_axes,
+                                              projection_axes=projection_axes)
 
         super().__init__(projection_geometry, volume_geometry,
                          projector, backprojector,

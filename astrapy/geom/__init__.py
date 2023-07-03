@@ -10,9 +10,9 @@ from astrapy.geom.vol import VolumeGeometry
 
 
 def resolve_volume_geometry(
-    shape,
-    extent_min,
-    extent_max,
+    shape=None,
+    extent_min=None,
+    extent_max=None,
     voxel_size=None,
     projection_geometry=None,
     verbose=False,

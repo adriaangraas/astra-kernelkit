@@ -100,6 +100,7 @@ __global__ void cone_fp(
     unsigned int voxX,
     unsigned int voxY,
     unsigned int voxZ,
+    unsigned int projs,
     unsigned int rows,
     unsigned int cols,
     float scale1,
@@ -178,7 +179,12 @@ __global__ void cone_fp(
             float val = 0.f;
             for (int s = offsetSlice; s < endSlice; ++s) {
                 // add interpolated voxel value at current coordinate
-                val += C::tex(volumeTexture, z, y, x);
+                // When numpy axes are x, y, z = (0, 1, 2) we need (z, y, x)
+                // here.
+                {% set ax = ['z', 'y', 'x'] %}
+                val += C::tex(volumeTexture, {{ ax[volume_axes[0]] }},
+                                             {{ ax[volume_axes[1]] }},
+                                             {{ ax[volume_axes[2]] }});
                 x += 1.f;
                 y += a1;
                 z += a2;
@@ -188,13 +194,12 @@ __global__ void cone_fp(
              *  sqrt(a1 * a1 + a2 * a2 + 1.0f) * outputScale; */
             val *= sqrt(a1 * a1 * scale1 + a2 * a2 * scale2 + 1.f);
             // printf("row %d col %d rows %d cols %d\n %d\n ", row, col, rows, cols, val);
-            {% if projs_row_major %}
-                // faster if kernel is in MODE_ROW
-                projections[proj][r * cols + c] += val * outputScale;
-            {% else %}
-                // faster if kernel is not in MODE_ROW
-                projections[proj][c * rows + r] += val * outputScale;
-            {% endif %}
+            {% set n = ['projs', 'rows', 'cols'] %}
+            {% set i = ['proj', 'r', 'c'] %}
+            projections[{{i[projection_axes[0]]}}][
+                {{i[projection_axes[1]]}} * {{n[projection_axes[2]]}}
+                + {{i[projection_axes[2]]}}
+            ] += val * outputScale;
         }
     }
 }
