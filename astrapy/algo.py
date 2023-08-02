@@ -28,43 +28,30 @@ def bp(
     volume_geometry: VolumeGeometry,
     filter: Any = None,
     preproc_fn: Callable = None,
-    verbose: bool = False,
     kernel: Kernel = None,
     out: cp.ndarray = None,
+    projection_axes: Sequence[int] = (0, 1, 2),
     **kwargs):
-    """
-    Executes `kernel`
-    TODO: generate argument hints for editors for geometries that have to
-    be passed through kwargs
-
-    :type volume: object
-        If `None` an `ndarray` is created on CPU, to save GPU memory.
-        Then the result is transferred chunk-after-chunk to the CPU array.
-        However, if a GPU array is given, no transfers are initiated.
-    :type sinogram: object
-        If `None` an `ndarray` is created on CPU, to save GPU memory.
-        Then the result is transferred chunk-after-chunk to the CPU array.
-        However, if a GPU array is given, no transfers are initiated.
-    :type chunk_size: int
-        If `None` all sinogram is processed at once. This might lead to a
-        GPU memory overflow of some sort. When an integer is given, will
-        upload and launch a kernel for each consecutive chunk of `sinogram`
-        and `geometry`.
-
-    """
     if out is None:
         out = cp.zeros(volume_geometry.shape, cp.float32)
     else:
         out = cp.asarray(out, dtype=cp.float32)
 
+    projections = cp.asarray(projections, dtype=cp.float32)
+
     if preproc_fn is not None:
         preproc_fn(projections, projection_geometry)
     if filter is not None:
+        if projection_axes != (0, 1, 2):
+            raise NotImplementedError()
         preweight(projections, projection_geometry)
         filt(projections, filter=filter)
+
+    kwargs.update(projection_axes=projection_axes)
     ptor = ConeBackprojector(
-        ConeBackprojection() if kernel is None else kernel,
-        verbose=verbose, **kwargs)
+        ConeBackprojection(**kwargs) if kernel is None else kernel,
+        texture_type='layered'
+    )
     ptor.projection_geometry = projection_geometry
     ptor.volume_geometry = volume_geometry
     ptor.projections = projections

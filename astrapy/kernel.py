@@ -27,7 +27,8 @@ _channel_desc = txt.ChannelFormatDescriptor(
 
 
 def copy_to_texture(array: cp.ndarray,
-                    type: str = 'array') -> txt.TextureObject:
+                    type: str = 'array',
+                    layered=False) -> txt.TextureObject:
     """Creates a single-channel 2D/3D texture object of type float
     from a CuPy array.
 
@@ -47,14 +48,16 @@ def copy_to_texture(array: cp.ndarray,
     cupy.cuda.texture.TextureObject
         Texture object.
     """
-    if type.lower() == 'array':
+    if type.lower() == 'array' or type.lower():
         assert array.ndim in (2, 3)
+        assert layered and array.ndim == 3 or not layered
         # TODO: for some reason CUDAarray's cause memory overflow, maybe
         #  `q` doesn't get cleaned up as it is still associated with the
         #  resource descriptor.. Try manually cleaning up `q`, maybe by
         #  force-deallocating or deleting it from the descriptor.
-        cuda_array = txt.CUDAarray(_channel_desc, *reversed(array.shape))
-        cuda_array.copy_from(array, cp.cuda.stream.Stream(null=True))  # async
+        cuda_array = txt.CUDAarray(_channel_desc, *reversed(array.shape),
+                                   1 if layered else 0)
+        cuda_array.copy_from(array, cp.cuda.get_current_stream())
         resource_desc = txt.ResourceDescriptor(
             cudaResourceTypeArray, cuArr=cuda_array)
         return txt.TextureObject(resource_desc, _texture_desc_3d)
@@ -72,7 +75,7 @@ def copy_to_texture(array: cp.ndarray,
             pitchInBytes=array_base.shape[1] * array.dtype.itemsize)
         return txt.TextureObject(resource_desc, _texture_desc_2d)
     else:
-        raise ValueError(f"`type` {type} not understood.")
+        raise ValueError(f"Type `{type}` not understood.")
 
 
 def texture_shape(obj: txt.TextureObject) -> tuple:
@@ -193,7 +196,9 @@ class Kernel(ABC):
         template_kwargs : dict
             Dictionary of template arguments to be rendered in the source code
             using Jinja2"""
-        print(f"Compiling kernel {self.__class__.__name__}...")
+        print(f"Compiling kernel {self.__class__.__name__}"
+              # f" with arguments {template_kwargs}"
+              f"...")
         code = jinja2.Template(
             self.cuda_source,
             undefined=jinja2.StrictUndefined).render(**template_kwargs)

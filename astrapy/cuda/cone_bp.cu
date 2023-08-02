@@ -37,7 +37,7 @@ struct Params {
 __constant__ Params params[{{ nr_projs_global }}];
 
 __global__ void cone_bp(
-{% if texture3D %}
+{% if texture == '3D' or texture == '2DLayered' %}
     cudaTextureObject_t projTexture,
 {% else %}
     cudaTextureObject_t * projTextures,
@@ -73,43 +73,48 @@ __global__ void cone_bp(
 	for (int i = 0; i < {{ nr_vxls_block_z }}; ++i)
 		Z[i] = .0f;
 
-    // scope hints the compiler to clean up variables?
-	{
-		for (int j = start; j < end; ++j) {
-			const float4& nU = params[j].numeratorU;
-			const float4& nV = params[j].numeratorV;
-			const float4& d  = params[j].denominator;
+    for (int j = start; j < end; ++j) {
+        const float4& nU = params[j].numeratorU;
+        const float4& nV = params[j].numeratorV;
+        const float4& d  = params[j].denominator;
 
-			float numU = nU.w + fX * nU.x + fY * nU.y + fZ * nU.z;
-			float numV = nV.w + fX * nV.x + fY * nV.y + fZ * nV.z;
-			float den  = d.w  + fX * d.x  + fY * d.y  + fZ * d.z;
+        float numU = nU.w + fX * nU.x + fY * nU.y + fZ * nU.z;
+        float numV = nV.w + fX * nV.x + fY * nV.y + fZ * nV.z;
+        float den  = d.w  + fX * d.x  + fY * d.y  + fZ * d.z;
 
-			float r, U, V;
-			for (int i = 0; i < {{ nr_vxls_block_z }}; ++i) {
-				r = __fdividef(1.f, den);
-				U = numU * r;
-				V = numV * r;
-{% if texture3D %}
-    {% set ax = ['j + .5f', 'V', 'U'] %}
-				float val = tex3D<float>(
-				    projTexture,
-				    {{ ax[projection_axes[2]] }},
-                    {{ ax[projection_axes[1]] }},
-                    {{ ax[projection_axes[0]] }});
+        float r, U, V;
+        for (int i = 0; i < {{ nr_vxls_block_z }}; ++i) {
+            r = __fdividef(1.f, den);
+            U = numU * r;
+            V = numV * r;
+{% if texture == '2DLayered' %}
+{% set ax = ['j', 'V', 'U'] %}
+            float val = tex2DLayered<float>(
+                projTexture,
+                {{ ax[projection_axes[2]] }},
+                {{ ax[projection_axes[1]] }},
+                {{ ax[projection_axes[0]] }});
+{% elif texture == '2D' %}
+{% set ax = ['j', 'V', 'U'] %}
+            float val = tex2D<float>(
+                projTextures[{{ ax[projection_axes[0]] }}],
+                {{ ax[projection_axes[2]] }},
+                {{ ax[projection_axes[1]] }});
+{% elif texture == '3D' %}
+{% set ax = ['j + .5f', 'V', 'U'] %}
+            float val = tex3D<float>(
+                projTexture,
+                {{ ax[projection_axes[2]] }},
+                {{ ax[projection_axes[1]] }},
+                {{ ax[projection_axes[0]] }});
 {% else %}
-    {% set ax = ['j', 'V', 'U'] %}
-                float val = tex2D<float>(
-                    projTextures[{{ ax[projection_axes[0]] }}],
-                    {{ ax[projection_axes[2]] }},
-                    {{ ax[projection_axes[1]] }});
 {% endif %}
-				Z[i] += r * r * val;
-				numU += nU.z;
-				numV += nV.z;
-				den  += d.z;
-			}
-		}
-	}
+            Z[i] += r * r * val;
+            numU += nU.z;
+            numV += nV.z;
+            den  += d.z;
+        }
+    }
 
     // make sure to write inside volume
 	int endZ = {{ nr_vxls_block_z }};

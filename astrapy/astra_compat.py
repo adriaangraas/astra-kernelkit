@@ -14,19 +14,12 @@ import astra.experimental
 class CompatProjector(BaseProjector, ABC):
     """Base class for ASTRA projectors."""
 
+    __slots__ = ('_volume', '_projections', '_vol_geom', '_proj_geom')
+
+
     def __init__(self):
         """Base class for ASTRA projectors."""
         super().__init__()
-
-        self._volume = None
-        self._projections = None
-        self._vol_geom = None
-        self._proj_geom = None
-        self._astra_vol_link = None
-        self._astra_proj_link = None
-        self._astra_vol_geom = None
-        self._astra_proj_geom = None
-        self._astra_projector_id = None
 
     @property
     def volume(self) -> cp.ndarray:
@@ -44,7 +37,7 @@ class CompatProjector(BaseProjector, ABC):
         ----------
         value : array-like
             The volume to project from."""
-        if self.volume_geometry is not None:
+        if not hasattr(self, 'volume_geometry'):
             expected_shape = tuple(reversed(self.volume_geometry.shape))
             if expected_shape != value.shape:
                 raise ValueError(
@@ -52,15 +45,11 @@ class CompatProjector(BaseProjector, ABC):
                     f" according to the volume geometry, but got "
                     f"{value.shape} instead.")
 
-        if self._volume is not None and self._volume.shape != value.shape:
-            self._astra_projector_id = None
-
         # Make sure CuPy doesn't clean up the volume while ASTRA is busy
         assert value.dtype == cp.float32
         assert value.flags.c_contiguous
         self._volume = value
         z, y, x = self._volume.shape
-
         # This operation is by my knowledge always efficient, so does not
         # require caching.
         self._astra_vol_link = astra.pythonutils.GPULink(
@@ -69,14 +58,25 @@ class CompatProjector(BaseProjector, ABC):
     @volume.deleter
     def volume(self):
         """Delete the volume and clean up ASTRA projector."""
-        self._volume = None
-        self._astra_vol_link = None  # TODO: does this delete?
-        self._astra_projector_id = None
+        del self._volume
+        del self._astra_vol_link  # TODO: does this delete?
+        try:
+            del self._astra_projector_id
+        except AttributeError:
+            pass
+
+    @property
+    def volume_axes(self):
+        """The axes of the volume to project from."""
+        return (2, 1, 0)
 
     @property
     def projections(self) -> cp.ndarray:
         """The projections onto which to project."""
-        return self._projections
+        try:
+            return self._projections
+        except AttributeError:
+            raise AttributeError("No projections have been set yet.")
 
     @projections.setter
     def projections(self, value: cp.ndarray):
@@ -84,7 +84,7 @@ class CompatProjector(BaseProjector, ABC):
         assert value.dtype == cp.float32
         assert value.flags.c_contiguous
 
-        if self.projection_geometry is not None:
+        if not hasattr(self, 'projection_geometry'):
             expected_shape = (self.projection_geometry[0].detector.rows,
                               len(self.projection_geometry),
                               self.projection_geometry[0].detector.cols)
@@ -93,31 +93,24 @@ class CompatProjector(BaseProjector, ABC):
                                  f" geometry. Got {value.shape}, "
                                  f" expected {expected_shape}.")
 
-        if self._projections is not None \
-            and self._projections.shape != value.shape:
-            self._astra_projector_id = None
-
+        assert value.dtype == cp.float32
+        assert value.flags.c_contiguous
         z, y, x = value.shape
-        if (self._astra_proj_link is not None
-            and self._projections.shape == value.shape):
-            # The advantage of maintaining the proj_link, is that it avoids
-            # reinitializing the ASTRA projector, which is expensive.
-            self._projections[...] = value
-        else:
-            # Projections need to be a cache attribute to avoid being cleaned
-            # up by CuPy.
-            self._projections = value
-            # This operation is by my knowledge always efficient, so does not
-            # require caching.
-            self._astra_proj_link = astra.pythonutils.GPULink(
-                self._projections.data.ptr, x, y, z, x * 4)
+        self._projections = value
+        self._astra_proj_link = astra.pythonutils.GPULink(
+            self._projections.data.ptr, x, y, z, x * 4)
 
     @projections.deleter
     def projections(self):
         """Delete the projections and clean up ASTRA projector."""
-        self._projections = None
-        self._astra_proj_link = None
-        self._astra_projector_id = None
+        del self._projections
+        del self._astra_proj_link  # TODO: does this delete?
+        del self._astra_projector_id
+
+    @property
+    def projection_axes(self):
+        """The axes of the volume to project from."""
+        return (1, 0, 2)
 
     @property
     def volume_geometry(self) -> VolumeGeometry:
@@ -125,9 +118,12 @@ class CompatProjector(BaseProjector, ABC):
 
     @volume_geometry.setter
     def volume_geometry(self, value: VolumeGeometry):
-        del self.volume_geometry  # invalidate projector
+        try:
+            del self.volume_geometry  # invalidate projector
+        except AttributeError:
+            pass
 
-        if self.volume is not None:
+        if hasattr(self, 'volume'):
             expected_shape_volume = tuple(reversed(self.volume.shape))
             if value.shape != expected_shape_volume:
                 raise ValueError(
@@ -150,9 +146,12 @@ class CompatProjector(BaseProjector, ABC):
 
     @volume_geometry.deleter
     def volume_geometry(self):
-        self._vol_geom = None
-        self._astra_vol_geom = None  # TODO: does this delete?
-        self._astra_projector_id = None
+        del self._vol_geom
+        del self._astra_vol_geom  # TODO: does this delete?
+        try:
+            del self._astra_projector_id
+        except AttributeError:
+            pass
 
     @property
     def projection_geometry(self):
@@ -160,9 +159,12 @@ class CompatProjector(BaseProjector, ABC):
 
     @projection_geometry.setter
     def projection_geometry(self, value: List[ProjectionGeometry]):
-        del self.projection_geometry  # invalidate projector
+        try:
+            del self.projection_geometry  # invalidate projector
+        except AttributeError:
+            pass
 
-        if self.projections is not None:
+        if hasattr(self, 'projections'):
             if self.projections.shape[1] != len(value):
                 raise ValueError("Number of projections does not match"
                                  " projection geometry.")
@@ -180,9 +182,12 @@ class CompatProjector(BaseProjector, ABC):
 
     @projection_geometry.deleter
     def projection_geometry(self):
-        self._proj_geom = None
-        self._astra_proj_geom = None  # TODO: does this delete?
-        self._astra_projector_id = None
+        del self._proj_geom
+        del self._astra_proj_geom  # TODO: does this delete?
+        try:
+            del self._astra_projector_id  # could not be generated/valid
+        except AttributeError:
+            pass
 
     @staticmethod
     def _geoms2vectors(geoms: List[ProjectionGeometry]):
@@ -202,7 +207,7 @@ class CompatProjector(BaseProjector, ABC):
         return vectors
 
     def projector3d(self):
-        if self._astra_projector_id is None:
+        if not hasattr(self, '_astra_projector_id'):
             if self._astra_proj_geom is None:
                 raise RuntimeError("Projection geometries must be given before"
                                    " creating a projector. Use the "
@@ -222,6 +227,8 @@ class CompatProjector(BaseProjector, ABC):
 
 class CompatConeProjector(CompatProjector):
     def __call__(self, additive=False):
+        assert hasattr(self, '_astra_vol_link')
+        assert hasattr(self, '_astra_proj_link')
         astra.experimental.direct_FPBP3D(
             self.projector3d(),
             self._astra_vol_link,
@@ -233,6 +240,8 @@ class CompatConeProjector(CompatProjector):
 
 class CompatConeBackprojector(CompatProjector):
     def __call__(self, additive=False):
+        assert hasattr(self, '_astra_vol_link')
+        assert hasattr(self, '_astra_proj_link')
         astra.experimental.direct_FPBP3D(
             self.projector3d(),
             self._astra_vol_link,

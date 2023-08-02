@@ -12,14 +12,15 @@ from astrapy.kernel import (copy_to_symbol, cuda_float4, Kernel)
 
 class ConeBackprojection(Kernel):
     """Conebeam backprojection kernel."""
-    VOXELS_PER_BLOCK = (16, 32, 6)
-    LIMIT_PROJS_PER_BLOCK = 32
+    VOXELS_PER_BLOCK = (16, 32, 6)  # ASTRA Toolbox default
+    LIMIT_PROJS_PER_BLOCK = 32  # ASTRA Toolbox default
     MAX_PROJS = 1024
+    TEXTURE_TYPES = ('3D', '2D', '2DLayered')
 
     def __init__(self,
                  max_projs: int = None,
                  voxels_per_block: tuple = None,
-                 limit_projs_per_block: int = None,
+                 projs_per_block: int = None,
                  volume_axes: tuple = (0, 1, 2),
                  projection_axes: tuple = (0, 1, 2)):
         """Conebeam backprojection kernel.
@@ -32,7 +33,7 @@ class ConeBackprojection(Kernel):
         voxels_per_block : tuple, optional
             Number of voxels computed in one thread block.
             If `None` defaults to `VOXELS_PER_BLOCK`.
-        limit_projs_per_block : int, optional
+        projs_per_block : int, optional
             Maximum number of projections processed in one thread block.
             If `None` defaults to `LIMIT_PROJS_PER_BLOCK`.
         volume_axes : tuple, optional
@@ -47,16 +48,25 @@ class ConeBackprojection(Kernel):
         super().__init__('cone_bp.cu')
         self._min_limit_projs = (max_projs if max_projs is not None
                                  else self.MAX_PROJS)
+        if voxels_per_block is not None and len(voxels_per_block) != 3:
+            raise ValueError('`voxels_per_block` must have 3 elements.')
         self._vox_block = (voxels_per_block if voxels_per_block is not None
                            else self.VOXELS_PER_BLOCK)
-        self._limit_projs_per_block = (
-            limit_projs_per_block if limit_projs_per_block is not None
-            else self.LIMIT_PROJS_PER_BLOCK)
+        self._projs_per_block = (projs_per_block if projs_per_block is not None
+                                 else self.LIMIT_PROJS_PER_BLOCK)
         self._vol_axs = volume_axes
         self._proj_axs = projection_axes
 
-    def compile(self, nr_projs: int = None,
-                use_texture_3d: bool = True) -> cp.RawModule:
+    @property
+    def volume_axes(self):
+        return self._vol_axs
+
+    @property
+    def projection_axes(self):
+        return self._proj_axs
+
+    def compile(self,
+                nr_projs: int = None, texture: str = '3D') -> cp.RawModule:
         """Compile the kernel.
 
         Parameters
@@ -74,14 +84,18 @@ class ConeBackprojection(Kernel):
         else:
             nr_projs_global = np.max((nr_projs, self._min_limit_projs))
 
+        if texture not in self.TEXTURE_TYPES:
+            raise ValueError(f"`texture` must be one of "
+                             f"{self.TEXTURE_TYPES}.")
+
         return self._compile(
             names=('cone_bp',),
             template_kwargs={'nr_vxls_block_x': self._vox_block[0],
                              'nr_vxls_block_y': self._vox_block[1],
                              'nr_vxls_block_z': self._vox_block[2],
-                             'nr_projs_block': self._limit_projs_per_block,
+                             'nr_projs_block': self._projs_per_block,
                              'nr_projs_global': nr_projs_global,
-                             'texture3D': use_texture_3d,
+                             'texture': texture,
                              'volume_axes': self._vol_axs,
                              'projection_axes': self._proj_axs})
 
@@ -119,27 +133,35 @@ class ConeBackprojection(Kernel):
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
                 f"voxels yet.")
 
-        compile_texture_3d = isinstance(textures, TextureObject)
         if isinstance(textures, cp.ndarray):
             if not textures.dtype == cp.int64:
                 raise ValueError("Please give in an array of pointers to "
                                  "TextureObject, or one 3D TextureObject.")
+            if self._proj_axs[0] != 0:
+                raise ValueError("If an array of textures pointers is given, "
+                                 "the first `projection_axes` axis must be "
+                                 "angles, i.e., must be 0.")
+            texture_type = '2D'
         elif isinstance(textures, TextureObject):
-            pass
+            flags = textures.ResDesc.cuArr.flags
+            if flags % 2 == 1:
+                texture_type = '2DLayered'
+            else:
+                texture_type = '3D'
         else:
             raise ValueError("Please give in an array of pointers to "
                              "TextureObject, or one 3D TextureObject.")
 
-        module = self.compile(len(params), compile_texture_3d)
+        module = self.compile(len(params), texture_type)
         cone_bp = module.get_function("cone_bp")
         copy_to_symbol(module, 'params', params.flatten())
 
-        # TODO(Adriaan): better to have SoA instead AoS?
+        # TODO(Adriaan): better SoA or AoS parameters?
         volume_shape = volume_geometry.shape
         blocks = np.ceil(np.asarray(volume_shape) / self._vox_block).astype(
             np.int32)
         for i, start in enumerate(
-            range(0, len(params), self._limit_projs_per_block)):
+            range(0, len(params), self._projs_per_block)):
             cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
                     (self._vox_block[0], self._vox_block[1]),  # threads
                     (textures,

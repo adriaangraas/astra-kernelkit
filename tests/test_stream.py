@@ -78,20 +78,25 @@ def test_graph():
     vol_data = cp.zeros(VOXELS, dtype=cp.float32)
     vol_data[17:113, 17:113, 17:113] = 1
     vol_data[33:97, 33:97, 33:97] = 0
+    vol_geom = ap.resolve_volume_geometry(
+        shape=vol_data.shape,
+       extent_min=EXT_MIN, extent_max=EXT_MAX)
+
     fp = ap.ConeProjector()
     fp.projection_geometry = geoms
     fp.volume = vol_data
-    proj_data = fp(EXT_MIN, EXT_MAX)
+    fp.volume_geometry = vol_geom
+    fp.projections = cp.zeros((NR_ANGLES, *DETECTOR_SHAPE), dtype=cp.float32)
+    fp()
 
-    bp = ap.ConeBackprojection()
-    params = bp.geoms2params(ap.GeometrySequence.fromList(geoms),
-                             vol_data.shape, EXT_MIN, EXT_MAX)
-    txt = ap.copy_to_texture(proj_data)
+    bp = ap.kernels.ConeBackprojection()
+    params = bp.geoms2params(ap.GeometrySequence.fromList(geoms), vol_geom)
+    txt = ap.kernel.copy_to_texture(fp.projections)
 
     with cp.cuda.stream.Stream() as stream:
-        stream.begin_capture()
         vol_data.fill(0.)
-        bp(txt, params, vol_data, EXT_MIN, EXT_MAX)
+        stream.begin_capture()
+        bp(txt, params, vol_data, vol_geom)
         graph = stream.end_capture()
         graph.launch(stream)
         vol_data_stored = cp.copy(vol_data)

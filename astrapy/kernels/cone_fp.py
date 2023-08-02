@@ -59,9 +59,17 @@ class ConeProjection(Kernel):
         self._pixels_in_x_block = (
             pixels_in_x_block if pixels_in_x_block is not None
             else self.PIXELS_IN_X_BLOCK)
-        self._volume_axes = volume_axes
-        self._projection_axes = projection_axes
+        self._vol_axs = volume_axes
+        self._proj_axs = projection_axes
         super().__init__('cone_fp.cu', *args)
+
+    @property
+    def volume_axes(self):
+        return self._vol_axs
+
+    @property
+    def projection_axes(self):
+        return self._proj_axs
 
     @staticmethod
     def _get_names():
@@ -73,8 +81,8 @@ class ConeProjection(Kernel):
             template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
                              'pixels_per_thread': self.PIXELS_PER_Y_THREAD,
                              'nr_projs_global': nr_projs,
-                             'volume_axes': self._volume_axes,
-                             'projection_axes': self._projection_axes,})
+                             'volume_axes': self._vol_axs,
+                             'projection_axes': self._proj_axs, })
 
     def __call__(
         self,
@@ -130,10 +138,10 @@ class ConeProjection(Kernel):
 
         assert volume_texture is not None
         if isinstance(projections, list):
-            if self._projection_axes[0] == 0:
+            if self._proj_axs[0] == 0:
                 len_dim_0 = len(projection_geometry)
                 err = "projections"
-            elif self._projection_axes[1] == 0:
+            elif self._proj_axs[1] == 0:
                 len_dim_0 = projection_geometry[0].detector.rows
                 err = "detector rows"
             else:
@@ -143,7 +151,7 @@ class ConeProjection(Kernel):
                 raise ValueError(
                     f"The length of projection array must match the number of "
                     f" {err} in the projection geometry, as the first axis "
-                    f" `projection_axes`, {self._projection_axes[0]}, is used.")
+                    f" `projection_axes`, {self._proj_axs[0]}, is used.")
 
             # TODO(Adriaan): Checking other axes is hard, because looping the
             #                projections and validating the row/column shapes

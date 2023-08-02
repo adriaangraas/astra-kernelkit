@@ -49,7 +49,7 @@ vol2 = ap.sirt(
     geoms,
     vol_geom,
     iters=2000,
-    # callback=callbackf
+    callback=callbackf
 )
 
 plt.figure(2)
