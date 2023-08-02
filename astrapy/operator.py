@@ -35,15 +35,11 @@ class XrayTransform(Operator):
                  projection_geometry: List[ProjectionGeometry],
                  volume_geometry: VolumeGeometry,
                  projector: BaseProjector,
-                 backprojector: BaseProjector,
-                 volume_axes: Tuple = (0, 1, 2),
-                 projection_axes: Tuple = (0, 1, 2)):
+                 backprojector: BaseProjector):
         self.projector = projector
         self.backprojector = backprojector
         self.projector.projection_geometry = projection_geometry
         self.projector.volume_geometry = volume_geometry
-        self._proj_axs = projection_axes
-        self._vol_axs = volume_axes
         self._T = None
 
     @property
@@ -51,12 +47,14 @@ class XrayTransform(Operator):
         nr_angles = len(self.projector.projection_geometry)
         det_shape = (self.projector.projection_geometry[0].detector.rows,
                      self.projector.projection_geometry[0].detector.cols)
-        return tuple((nr_angles, *det_shape)[i] for i in self._proj_axs)
+        proj_axs = self.projector.projection_axes
+        return tuple((nr_angles, *det_shape)[i] for i in proj_axs)
 
     @property
     def domain_shape(self) -> Tuple:
+        vol_axs = self.projector.volume_axes
         return tuple(self.projector.volume_geometry.shape[i]
-                     for i in self._vol_axs)
+                     for i in vol_axs)
 
     def __call__(self, input: cp.ndarray, out: Optional[cp.ndarray] = None):
         """Project a volume onto a set of projections."""
@@ -142,6 +140,4 @@ class ConebeamTransform(XrayTransform):
                                               projection_axes=projection_axes)
 
         super().__init__(projection_geometry, volume_geometry,
-                         projector, backprojector,
-                         volume_axes=volume_axes,
-                         projection_axes=projection_axes)
+                         projector, backprojector)
