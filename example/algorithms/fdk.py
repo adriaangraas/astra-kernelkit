@@ -6,8 +6,6 @@ import numpy as np
 
 def geometries(n_angles=1000):
     """Projection geometries of a cube in the 3D space."""
-    # custom geometry, 99x141 detector, 1mm pixel size
-    # 10cm source-object distance, 20cm object-detector distance along x-axis
     geom_t0 = kk.ProjectionGeometry(
         source_position=[-10.0, 0.0, 0.0],
         detector_position=[20.0, 0.0, 0.0],
