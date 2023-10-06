@@ -13,10 +13,12 @@ from kernelkit.processing import preweight, filter as filt
 from kernelkit.projector import ForwardProjector, BackProjector
 
 
-def fp(volume: Any,
-       projection_geometry: list[ProjectionGeometry],
-       volume_geometry: VolumeGeometry,
-       out=None):
+def fp(
+    volume: Any,
+    projection_geometry: list[ProjectionGeometry],
+    volume_geometry: VolumeGeometry,
+    out=None,
+):
     """X-ray forward projection.
 
     Parameters
@@ -42,15 +44,17 @@ def fp(volume: Any,
     return result.get() if out is None else out
 
 
-def bp(projections: Any,
-       projection_geometry: list[ProjectionGeometry],
-       volume_geometry: VolumeGeometry,
-       filter: Any = None,
-       preproc_fn: Callable = None,
-       kernel: BaseKernel = None,
-       out=None,
-       projection_axes: Sequence[int] = (0, 1, 2),
-       **kwargs):
+def bp(
+    projections: Any,
+    projection_geometry: list[ProjectionGeometry],
+    volume_geometry: VolumeGeometry,
+    filter: Any = None,
+    preproc_fn: Callable = None,
+    kernel: BaseKernel = None,
+    out=None,
+    projection_axes: Sequence[int] = (0, 1, 2),
+    **kwargs,
+):
     """X-ray backprojection.
 
     Parameters
@@ -96,7 +100,8 @@ def bp(projections: Any,
     kwargs.update(projection_axes=projection_axes)
     ptor = BackProjector(
         VoxelDrivenConeBP(**kwargs) if kernel is None else kernel,
-        texture_type='layered')
+        texture_type="layered",
+    )
     ptor.projection_geometry = projection_geometry
     ptor.volume_geometry = volume_geometry
     ptor.projections = projections
@@ -105,11 +110,50 @@ def bp(projections: Any,
     return out.get()
 
 
-def fdk(projections: Any,
-        projection_geometry: Any,
-        volume_geometry: VolumeGeometry,
-        filter: Any = 'ramlak',
-        **bp_kwargs):
+def fbp(
+    projections: Any,
+    projection_geometry: list[ProjectionGeometry],
+    volume_geometry: VolumeGeometry,
+    filter: Any = "ramlak",
+    **bp_kwargs,
+):
+    """Filtered backprojection algorithm for parallel-beam geometry.
+
+    Parameters
+    ----------
+    projections : array-like
+        The projections to reconstruct from.
+    projection_geometry : list[ProjectionGeometry]
+        The projection geometries.
+    volume_geometry : VolumeGeometry
+        The volume geometry.
+    filter : Any, optional
+        The filter to apply to the projections before backprojection. Default
+        is 'ramlak'. See `kernelkit.processing.filter` for more information.
+    bp_kwargs : dict, optional
+        Keyword arguments to pass to the `bp` function. See
+        `kernelkit.algo.bp` for more information.
+
+    See Also
+    --------
+    kernelkit.algo.bp : Backprojection function.
+    """
+    raise NotImplementedError("FBP is not implemented yet.")
+
+    if not "kernel" in bp_kwargs:
+        bp_kwargs.update(kernel=VoxelDrivenConeBP())
+    return bp(
+        projections, projection_geometry, volume_geometry, filter=filter, **bp_kwargs
+    )
+
+
+def fdk(
+    projections: Any,
+    projection_geometry: Any,
+    volume_geometry: VolumeGeometry,
+    filter: Any = "ramlak",
+    **bp_kwargs,
+):
     """Feldkamp-Davis-Kress algorithm for conebeam geometry.
 
     Parameters
@@ -144,32 +188,34 @@ def fdk(projections: Any,
                 1(6), 612. https://doi.org/10.1364/JOSAA.1.000612
     """
     for p in projection_geometry:
-        if p.beam != 'cone':
-            raise NotImplementedError("Only cone beam geometry is supported "
-                                      "at the moment.")
-    if not 'kernel' in bp_kwargs:
+        if p.beam != "cone":
+            raise NotImplementedError(
+                "Only cone beam geometry is supported at the moment."
+            )
+    if not "kernel" in bp_kwargs:
         bp_kwargs.update(kernel=VoxelDrivenConeBP())
-    return bp(projections,
-              projection_geometry,
-              volume_geometry,
-              filter=filter,  # just bp with a filter
-              **bp_kwargs)
+    return bp(
+        projections,
+        projection_geometry,
+        volume_geometry,
+        filter=filter,  # just bp with a filter
+        **bp_kwargs,
+    )
 
 
-def sirt(projections: np.ndarray,
-         projection_geometry: Any,
-         volume_geometry: VolumeGeometry,
-         iters: int = 100,
-         dtype=cp.float32,
-         verbose: bool = True,
-         mask: Any = None,
-         proj_mask: Any = True,
-         min_constraint: float = None,
-         max_constraint: float = None,
-         return_gpu: bool = False,
-         callback: callable = None,
-         residual_every: int=10,
-         stream=None):
+def sirt(
+    projections: np.ndarray,
+    projection_geometry: Any,
+    volume_geometry: VolumeGeometry,
+    iters: int = 100,
+    verbose: bool = True,
+    mask: Any = None,
+    min_constraint: float = None,
+    max_constraint: float = None,
+    return_gpu: bool = False,
+    callback: callable = None,
+    residual_every: int = 10,
+):
     """Simultaneous Iterative Reconstruction Technique.
 
     Parameters
@@ -210,8 +256,7 @@ def sirt(projections: np.ndarray,
         until the function returns.
     """
     if len(projections) != len(projection_geometry):
-        raise ValueError("Number of projections does not match number of"
-                         " geometries.")
+        raise ValueError("Number of projections does not match number of geometries.")
     xp_proj = cp
     xp_vol = cp
 
@@ -223,19 +268,26 @@ def sirt(projections: np.ndarray,
     fptor = ForwardProjector()
     fptor.projection_geometry = projection_geometry
     fptor.volume_geometry = volume_geometry
+
     def A(x, out=None):
         if out is None:
-            out = xp_proj.zeros((len(projection_geometry),
-                                 projection_geometry[0].detector.rows,
-                                 projection_geometry[0].detector.cols), cp.float32)
+            out = xp_proj.zeros(
+                (
+                    len(projection_geometry),
+                    projection_geometry[0].detector.rows,
+                    projection_geometry[0].detector.cols,
+                ),
+                cp.float32,
+            )
         fptor.volume = x
         fptor.projections = out
         fptor()
         return out
 
-    bptor = BackProjector(texture_type='array2d')
+    bptor = BackProjector(texture_type="array2d")
     bptor.projection_geometry = projection_geometry
     bptor.volume_geometry = volume_geometry
+
     def A_T(y, out=None):
         if out is None:
             out = xp_vol.zeros(x.shape, dtype=cp.float32)
@@ -251,15 +303,15 @@ def sirt(projections: np.ndarray,
     # y_tmp = [aspitched(cp.ones_like(p)) for p in y]
     y_tmp = [xp_proj.ones_like(p) for p in y]  # intermediate variable
     C = A_T(y_tmp)
-    xp_vol.divide(1., C, out=C)  # TODO(Adriaan): there is no `where=` in CuPy
-    C[C == xp_vol.infty] = 0.
+    xp_vol.divide(1.0, C, out=C)  # TODO(Adriaan): there is no `where=` in CuPy
+    C[C == xp_vol.infty] = 0.0
     cp.get_default_memory_pool().free_all_blocks()
 
     # compute scaling operator R
     R = A(x_tmp)
     for p in R:
-        xp_proj.divide(1., p, out=p)  # TODO(Adriaan)
-        p[p == xp_proj.infty] = 0.
+        xp_proj.divide(1.0, p, out=p)  # TODO(Adriaan)
+        p[p == xp_proj.infty] = 0.0
     cp.get_default_memory_pool().free_all_blocks()
 
     bar = tqdm(range(iters), disable=not verbose, desc="SIRT")
@@ -273,10 +325,10 @@ def sirt(projections: np.ndarray,
             p_tmp -= p  # residual
             p_tmp *= r
 
-        E = 10  # compute residual norm every `E`
+        E = residual_every  # compute residual norm every `E`
         if i % E == 0:  # the following operation is expensive
             res_norm = str(sum([xp_proj.linalg.norm(p) for p in y_tmp]))
-        desc = 'SIRT [' + '*' * (i % E) + '.' * (E - i % E) + ']'
+        desc = "SIRT [" + "*" * (i % E) + "." * (E - i % E) + "]"
         bar.set_description(f"{desc}: {res_norm})")
 
         # backproject residual into `x_tmp`, apply C

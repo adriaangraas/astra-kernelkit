@@ -19,13 +19,13 @@ using [CuPy](https://cupy.dev/).
 
 ## Installation
 KernelKit depends on [CuPy](https://docs.cupy.dev/en/stable/install.html), which
-we recommend to be installed first. Refer to the [installation instructions](https://kernelkit.readthedocs.io/en/latest/installation.html).
+we recommend to be installed first. Refer to our [installation instructions](https://kernelkit.readthedocs.io/en/latest/installation.html).
 
 ## Getting started
 See the [documentation](https://astra-kernelkit.readthedocs.io/en/latest/) for more information.
 
 ## License
-The ASTRA KernelKit and ASTRA Toolbox projects are open source under the GPLv3 license.
+The ASTRA KernelKit and ASTRA Toolbox projects are freely available and open source under the GPLv3 license.
 See the [LICENSE.md](LICENSE.md) file for details.
 
 ## Contact

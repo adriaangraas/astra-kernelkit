@@ -25,8 +25,9 @@ def _voxel_size(shape, extent_min, extent_max) -> tuple[float, float, float]:
 class VolumeGeometry:
     """Geometry for a single 3D reconstruction object."""
 
-    def __init__(self, shape, voxel_size, extent_min, extent_max,
-                 rotation=(0., 0., 0.)):
+    def __init__(
+        self, shape, voxel_size, extent_min, extent_max, rotation=(0.0, 0.0, 0.0)
+    ):
         """Initializes a `VolumeGeometry` object.
 
         Parameters

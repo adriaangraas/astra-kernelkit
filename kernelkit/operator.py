@@ -67,8 +67,10 @@ class ProjectorOperator(BaseOperator, ABC):
     def range_shape(self) -> tuple:
         """The range $\\ran{A}$."""
         nr_angles = len(self.projector.projection_geometry)
-        det_shape = (self.projector.projection_geometry[0].detector.rows,
-                     self.projector.projection_geometry[0].detector.cols)
+        det_shape = (
+            self.projector.projection_geometry[0].detector.rows,
+            self.projector.projection_geometry[0].detector.cols,
+        )
         proj_axs = self.projector.projection_axes
         return tuple((nr_angles, *det_shape)[i] for i in proj_axs)
 
@@ -83,9 +85,11 @@ class ProjectorOperator(BaseOperator, ABC):
             The output of the operator. If not given, a new array is allocated.
         """
         if input.shape != self.domain_shape:
-            raise ValueError(f"Input shape {input.shape} does not match "
-                             f"domain shape {self.domain_shape} of "
-                             f"operator.")
+            raise ValueError(
+                f"Input shape {input.shape} does not match "
+                f"domain shape {self.domain_shape} of "
+                "operator."
+            )
         if out is None:
             out = cp.zeros(self.range_shape, dtype=cp.float32)
         self.projector.volume = input
@@ -118,9 +122,11 @@ class ProjectorOperator(BaseOperator, ABC):
             def __call__(self, input: cp.ndarray, out=None):
                 """Apply the backprojector, $A^*(y)$."""
                 if input.shape != self.domain_shape:
-                    raise ValueError(f"Input shape {input.shape} does not "
-                                     f"match domain shape "
-                                     f"{self.domain_shape} of operator.")
+                    raise ValueError(
+                        f"Input shape {input.shape} does not "
+                        "match domain shape "
+                        f"{self.domain_shape} of operator."
+                    )
                 if out is None:
                     out = cp.zeros(self.range_shape, dtype=cp.float32)
                 self.projector.projections = input
@@ -133,7 +139,7 @@ class ProjectorOperator(BaseOperator, ABC):
                 """The adjoint of the adjoint operator, $A^{**} = A$."""
                 return self_
 
-        if not hasattr(self, '_T'):
+        if not hasattr(self, "_T"):
             self._T = _Adjoint()
         return self._T
 
@@ -141,14 +147,16 @@ class ProjectorOperator(BaseOperator, ABC):
 class XrayTransform(ProjectorOperator):
     """A mathematical operator representing the X-ray transform."""
 
-    def __init__(self,
-                 projection_geometry: Any,
-                 volume_geometry: Any,
-                 volume_axes: tuple = (0, 1, 2),
-                 projection_axes: tuple = (0, 1, 2),
-                 use_toolbox: bool = False,
-                 fp_kwargs=None,
-                 bp_kwargs=None):
+    def __init__(
+        self,
+        projection_geometry: Any,
+        volume_geometry: Any,
+        volume_axes: tuple = (0, 1, 2),
+        projection_axes: tuple = (0, 1, 2),
+        use_toolbox: bool = False,
+        fp_kwargs=None,
+        bp_kwargs=None,
+    ):
         """Create an X-ray transform operator.
 
         Parameters
@@ -179,27 +187,34 @@ class XrayTransform(ProjectorOperator):
         fp_kwargs = fp_kwargs or {}
         bp_kwargs = bp_kwargs or {}
         if use_toolbox:
-            from kernelkit.toolbox_support import (ForwardProjectorAdapter,
-                                                   BackprojectorAdapter)
+            from kernelkit.toolbox_support import (
+                ForwardProjectorAdapter,
+                BackprojectorAdapter,
+            )
+
             if projection_axes != (1, 0, 2):
-                raise ValueError("ASTRA Toolbox compatible projectors can only"
-                                 " be used with `projection_axes=(1, 0, 2)`."
-                                 " Simply set `projection_axes=(1, 0, 2)` and"
-                                 " transpose the input.")
+                raise ValueError(
+                    "ASTRA Toolbox compatible projectors can only"
+                    " be used with `projection_axes=(1, 0, 2)`."
+                    " Simply set `projection_axes=(1, 0, 2)` and"
+                    " transpose the input."
+                )
             if volume_axes != (2, 1, 0):
-                raise ValueError("ASTRA Toolbox compatible projectors can only"
-                                 " be used with `volume_axes=(2, 1, 0)`. "
-                                 " Simply set `volume_axes=(2, 1, 0)` and "
-                                 " transpose the input.")
+                raise ValueError(
+                    "ASTRA Toolbox compatible projectors can only"
+                    " be used with `volume_axes=(2, 1, 0)`. "
+                    " Simply set `volume_axes=(2, 1, 0)` and "
+                    " transpose the input."
+                )
             projector = ForwardProjectorAdapter(**fp_kwargs)
             backprojector = BackprojectorAdapter(**bp_kwargs)
         else:
-            projector = ForwardProjector(volume_axes=volume_axes,
-                                         projection_axes=projection_axes,
-                                         **fp_kwargs)
-            backprojector = BackProjector(volume_axes=volume_axes,
-                                          projection_axes=projection_axes,
-                                          **bp_kwargs)
+            projector = ForwardProjector(
+                volume_axes=volume_axes, projection_axes=projection_axes, **fp_kwargs
+            )
+            backprojector = BackProjector(
+                volume_axes=volume_axes, projection_axes=projection_axes, **bp_kwargs
+            )
 
         projector.volume_geometry = volume_geometry
         projector.projection_geometry = projection_geometry

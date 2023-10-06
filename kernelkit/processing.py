@@ -87,12 +87,13 @@ def _filter(num, filter_name: str = "ramlak", use_cupy: bool = True):
         cosine_filter = xp.fft.fftshift(xp.sin(freq))
         four_filter *= cosine_filter
     else:
-        raise ValueError(f"Filter with `filter_name` {filter_name} not known"
-                         f" or not yet implemented.")
+        raise ValueError(
+            f"Filter with `filter_name` {filter_name} not known or not yet implemented."
+        )
     return four_filter
 
 
-def filter(projections, verbose: bool = False, filter: str = 'ramlak'):
+def filter(projections, verbose: bool = False, filter: str = "ramlak"):
     """Filter in Fourier domain
 
     Parameters
@@ -107,19 +108,22 @@ def filter(projections, verbose: bool = False, filter: str = 'ramlak'):
     """
     xp = cp.get_array_module(projections[0])
     # this function follows structurally scikit-image's iradon()
-    padding_shape = max(64, int(2 ** int(
-        xp.ceil(xp.log2(2 * projections[0].shape[1])))))
+    padding_shape = max(
+        64, int(2 ** int(xp.ceil(xp.log2(2 * projections[0].shape[1]))))
+    )
     four_filt = _filter(padding_shape, filter_name=filter, use_cupy=xp == cp)
     p_tmp = xp.empty((projections[0].shape[0], padding_shape))
     for p in tqdm(projections, desc="Filtering", disable=not verbose):
-        assert cp.get_array_module(p) == xp, (
-            "Arrays need to be all cupy or all numpy.")
+        assert cp.get_array_module(p) == xp, "Arrays need to be all cupy or all numpy."
         p_tmp[...] = xp.pad(
-            p, ((0, 0), (0, padding_shape - projections[0].shape[1])),
-            mode='constant', constant_values=0)
+            p,
+            ((0, 0), (0, padding_shape - projections[0].shape[1])),
+            mode="constant",
+            constant_values=0,
+        )
         f = xp.fft.fft(p_tmp) * four_filt  # complex mult
         p_tmp[...] = xp.real(xp.fft.ifft(f, n=p_tmp.shape[1]))
-        p[...] = p_tmp[..., :p.shape[1]]
+        p[...] = p_tmp[..., : p.shape[1]]
 
 
 def _ramlak_filter_fourier(projections: cp.ndarray, verbose=False):
@@ -136,17 +140,18 @@ def _ramlak_filter_fourier(projections: cp.ndarray, verbose=False):
     ramlak = xp.linspace(-1, 1, num=projections[0].shape[1] // 2 + 1)
     ramlak = xp.abs(ramlak)
     for p in tqdm(projections, desc="Filtering", disable=not verbose):
-        assert cp.get_array_module(p) == xp, (
-            "Arrays need to be all cupy or all numpy.")
+        assert cp.get_array_module(p) == xp, "Arrays need to be all cupy or all numpy."
         f = xp.fft.fftshift(xp.fft.rfft(p))
         f *= ramlak  # complex mult with ramp filter
         p[...] = xp.fft.irfft(xp.fft.ifftshift(f), n=p.shape[1])
 
 
-def preweight(projections: cp.ndarray,
-              geoms: list[ProjectionGeometry],
-              detector_piercings: list = None,
-              verbose: bool = False):
+def preweight(
+    projections: cp.ndarray,
+    geoms: list[ProjectionGeometry],
+    detector_piercings: list = None,
+    verbose: bool = False,
+):
     """Pixelwise rescaling to compensate for ray length in conebeam images
 
     Parameters
@@ -162,20 +167,22 @@ def preweight(projections: cp.ndarray,
         Whether to show a progress bar.
     """
     xp = cp.get_array_module(projections[0])
-    rows, cols = xp.mgrid[0:geoms[0].detector.rows, 0:geoms[0].detector.cols]
+    rows, cols = xp.mgrid[0 : geoms[0].detector.rows, 0 : geoms[0].detector.cols]
     rows_view = xp.repeat(rows[:, :, xp.newaxis], 3, 2)
     cols_view = xp.repeat(cols[:, :, xp.newaxis], 3, 2)
 
-    for i, (p, g) in enumerate(tqdm(zip(projections, geoms),
-                                    disable=not verbose, desc="Preweighting")):
-        assert cp.get_array_module(p) == xp, (
-            "Arrays need to be all cupy or all numpy.")
-        piercing_point = (g.detector_position if detector_piercings is None
-                          else detector_piercings[i])
+    for i, (p, g) in enumerate(
+        tqdm(zip(projections, geoms), disable=not verbose, desc="Preweighting")
+    ):
+        assert cp.get_array_module(p) == xp, "Arrays need to be all cupy or all numpy."
+        piercing_point = (
+            g.detector_position if detector_piercings is None else detector_piercings[i]
+        )
         central_ray = np.linalg.norm(piercing_point - g.source_position)
-        pixels = (xp.array(g.detector_extent_min)
-                  + cols_view * xp.array(g.u * g.detector.pixel_width)
-                  + rows_view * xp.array(g.v * g.detector.pixel_height))
-        pixel_rays = xp.linalg.norm(pixels - xp.array(g.source_position),
-                                    axis=2)
+        pixels = (
+            xp.array(g.detector_extent_min)
+            + cols_view * xp.array(g.u * g.detector.pixel_width)
+            + rows_view * xp.array(g.v * g.detector.pixel_height)
+        )
+        pixel_rays = xp.linalg.norm(pixels - xp.array(g.source_position), axis=2)
         p *= xp.divide(central_ray, pixel_rays)

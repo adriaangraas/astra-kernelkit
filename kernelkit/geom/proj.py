@@ -45,7 +45,7 @@ class Detector:
         Width of a single pixel.
     """
 
-    __slots__ = ['rows', 'cols', 'pixel_height', 'pixel_width']
+    __slots__ = "rows", "cols", "pixel_height", "pixel_width"
 
     rows: int
     cols: int
@@ -73,6 +73,7 @@ class Detector:
 
     __dict__ = {}
 
+
 class ProjectionGeometry:
     """Single 3D projection with one source and one detector."""
 
@@ -81,17 +82,19 @@ class ProjectionGeometry:
     class Beam(Enum):
         """Beam type."""
 
-        CONE = 'cone'
-        PARALLEL = 'parallel'
+        CONE = "cone"
+        PARALLEL = "parallel"
 
-    def __init__(self,
-                 source_position,
-                 detector_position,
-                 detector: Detector,
-                 u: Sequence = (0., 1., 0.),
-                 v: Sequence = (0., 0., 1.),
-                 beam: Beam | str = Beam.CONE,
-                 array_module=None):
+    def __init__(
+        self,
+        source_position,
+        detector_position,
+        detector: Detector,
+        u: Sequence = (0.0, 1.0, 0.0),
+        v: Sequence = (0.0, 0.0, 1.0),
+        beam: Beam | str = Beam.CONE,
+        array_module=None,
+    ):
         """Initialize a projection geometry.
 
         Parameters
@@ -120,16 +123,13 @@ class ProjectionGeometry:
         """
         if array_module is not None:
             self.xp = array_module
-        self.source_position = self.xp.array(source_position,
-                                             dtype=self.xp.float32)
-        self.detector_position = self.xp.array(detector_position,
-                                               dtype=self.xp.float32)
+        self.source_position = self.xp.array(source_position, dtype=self.xp.float32)
+        self.detector_position = self.xp.array(detector_position, dtype=self.xp.float32)
         self.detector = detector
         self.u = self.xp.array(u, dtype=self.xp.float32)
         self.v = self.xp.array(v, dtype=self.xp.float32)
         if beam not in self.Beam:
-            raise ValueError(f"Beam type must be one of {self.Beam}, "
-                             "got {beam}.")
+            raise ValueError(f"Beam type must be one of {self.Beam}, got {beam}.")
         self.beam = beam.value
 
     @property
@@ -140,9 +140,11 @@ class ProjectionGeometry:
         -----
         The detector is assumed to be centered around the detector position.
         """
-        return (self.detector_position
-                - self.v * self.detector.height / 2
-                - self.u * self.detector.width / 2)
+        return (
+            self.detector_position
+            - self.v * self.detector.height / 2
+            - self.u * self.detector.width / 2
+        )
 
     @property
     def u(self):
@@ -158,9 +160,9 @@ class ProjectionGeometry:
         value : array-like
             The horizontal u-vector in the detector frame. Must be a unit
             vector."""
-        if not self.xp.allclose(np.linalg.norm(value), 1.):
+        if not self.xp.allclose(np.linalg.norm(value), 1.0):
             raise ValueError("`u` must be a unit vector to avoid ambiguity.")
-        if self.xp.allclose(value, 0.):
+        if self.xp.allclose(value, 0.0):
             raise ValueError("`u` must not be zero.")
         # TODO(Adriaan): can only be checked when u, v are set at the same
         #  time
@@ -183,9 +185,9 @@ class ProjectionGeometry:
         value : array-like
             The vertical v-vector in the detector frame. Must be a unit
             vector."""
-        if not self.xp.allclose(np.linalg.norm(value), 1.):
+        if not self.xp.allclose(np.linalg.norm(value), 1.0):
             raise ValueError("`v` must be a unit vector.")
-        if self.xp.allclose(value, 0.):
+        if self.xp.allclose(value, 0.0):
             raise ValueError("`v` must not be zero.")
         # TODO(Adriaan): can only be checked when u, v are set at the same
         #  time
@@ -206,15 +208,17 @@ class ProjectionGeometry:
                 pixel_width=self.detector.pixel_width,
                 pixel_height=self.detector.pixel_height,
             ),
-            array_module=self.xp
+            array_module=self.xp,
         )
         return obj
 
     def __str__(self):
-        return (f"Source {self.source_position} "
-                f"Detector {self.detector_position} "
-                f"Horizontal vector: {self.u} "
-                f"Vertical vector: {self.v} ")
+        return (
+            f"Source {self.source_position} "
+            f"Detector {self.detector_position} "
+            f"Horizontal vector: {self.u} "
+            f"Vertical vector: {self.v} "
+        )
 
 
 @dataclass
@@ -236,6 +240,7 @@ class GeometrySequence:
     xp : array-like, optional
         The array library to use. If None, it defaults to numpy.
     """
+
     xp = np
 
     @dataclass
@@ -255,6 +260,7 @@ class GeometrySequence:
         xp : array-like, optional
             The array library to use. If None, it defaults to numpy.
         """
+
         xp = np
         rows: xp.ndarray
         cols: xp.ndarray
@@ -290,9 +296,11 @@ class GeometrySequence:
     def detector_extent_min(self):
         """The minimum extent of the detector in the detector frame.
         This is the bottom left corner of the detector."""
-        return (self.detector_position
-                - self.v * self.detector.height[..., self.xp.newaxis] / 2
-                - self.u * self.detector.width[..., self.xp.newaxis] / 2)
+        return (
+            self.detector_position
+            - self.v * self.detector.height[..., self.xp.newaxis] / 2
+            - self.u * self.detector.width[..., self.xp.newaxis] / 2
+        )
 
     @classmethod
     def fromList(cls, geometries: list[ProjectionGeometry], xp=None):
@@ -308,24 +316,26 @@ class GeometrySequence:
         if xp is None:
             xp = cls.xp
 
-        def _cvrt(arr, dtype): return xp.ascontiguousarray(
-            xp.array(arr, dtype=dtype))
+        def _cvrt(arr, dtype):
+            return xp.ascontiguousarray(xp.array(arr, dtype=dtype))
 
         ds = cls.DetectorSequence(
             rows=_cvrt([g.detector.rows for g in geometries], xp.int32),
             cols=_cvrt([g.detector.cols for g in geometries], xp.int32),
-            pixel_width=_cvrt([g.detector.pixel_width for g in geometries],
-                              xp.float32),
-            pixel_height=_cvrt([g.detector.pixel_height for g in geometries],
-                               xp.float32))
+            pixel_width=_cvrt([g.detector.pixel_width for g in geometries], xp.float32),
+            pixel_height=_cvrt(
+                [g.detector.pixel_height for g in geometries], xp.float32
+            ),
+        )
         gs = cls(
-            source_position=_cvrt([g.source_position for g in geometries],
-                                  xp.float32),
-            detector_position=_cvrt([g.detector_position for g in geometries],
-                                    xp.float32),
+            source_position=_cvrt([g.source_position for g in geometries], xp.float32),
+            detector_position=_cvrt(
+                [g.detector_position for g in geometries], xp.float32
+            ),
             u=_cvrt([g.u for g in geometries], xp.float32),
             v=_cvrt([g.v for g in geometries], xp.float32),
-            detector=ds)
+            detector=ds,
+        )
         return gs
 
     def take(self, indices):
@@ -340,14 +350,15 @@ class GeometrySequence:
             rows=self.detector.rows[indices],
             cols=self.detector.cols[indices],
             pixel_width=self.detector.pixel_width[indices],
-            pixel_height=self.detector.pixel_height[indices]
+            pixel_height=self.detector.pixel_height[indices],
         )
         gs = GeometrySequence(
             source_position=self.source_position[indices],
             detector_position=self.detector_position[indices],
             u=self.u[indices],
             v=self.v[indices],
-            detector=ds)
+            detector=ds,
+        )
         return gs
 
     def __getitem__(self, item):
@@ -365,15 +376,14 @@ class GeometrySequence:
                 cols=xp.copy(self.detector.cols),
                 pixel_width=xp.copy(self.detector.pixel_width),
                 pixel_height=xp.copy(self.detector.pixel_height),
-            )
+            ),
         )
         obj.xp = xp
         obj.detector.xp = xp
         return obj
 
 
-def shift(geom: ProjectionGeometry,
-          vector: np.ndarray) -> ProjectionGeometry:
+def shift(geom: ProjectionGeometry, vector: np.ndarray) -> ProjectionGeometry:
     """Creates a new geometry by a 3D shift.
 
     Parameters
@@ -457,22 +467,19 @@ def scale_(geom: ProjectionGeometry, factor: float) -> None:
     pixel_vec /= factor
 
     geom.detector.pixel_width = xp.linalg.norm(pixel_vec, axis=-1)
-    xp.divide(pixel_vec, geom.detector.pixel_width[..., xp.newaxis],
-              out=geom.u)
-    xp.multiply(geom.v, geom.detector.pixel_height[..., xp.newaxis],
-                out=pixel_vec)
+    xp.divide(pixel_vec, geom.detector.pixel_width[..., xp.newaxis], out=geom.u)
+    xp.multiply(geom.v, geom.detector.pixel_height[..., xp.newaxis], out=pixel_vec)
     pixel_vec /= factor
 
     geom.detector.pixel_height = xp.linalg.norm(pixel_vec, axis=-1)
-    xp.divide(pixel_vec,
-              geom.detector.pixel_height[..., xp.newaxis],
-              out=geom.v)
+    xp.divide(pixel_vec, geom.detector.pixel_height[..., xp.newaxis], out=geom.v)
     xp.divide(geom.source_position, factor, out=geom.source_position)
     xp.divide(geom.detector_position, factor, out=geom.detector_position)
 
 
-def rotate(geom: ProjectionGeometry, roll: float = 0., pitch: float = 0.,
-           yaw: float = 0.) -> ProjectionGeometry:
+def rotate(
+    geom: ProjectionGeometry, roll: float = 0.0, pitch: float = 0.0, yaw: float = 0.0
+) -> ProjectionGeometry:
     """Creates a new geometry by rotation.
 
     Parameters
@@ -499,8 +506,9 @@ def rotate(geom: ProjectionGeometry, roll: float = 0., pitch: float = 0.,
     return ngeom
 
 
-def rotate_(geom: ProjectionGeometry, roll: float = 0., pitch: float = 0.,
-            yaw: float = 0.) -> None:
+def rotate_(
+    geom: ProjectionGeometry, roll: float = 0.0, pitch: float = 0.0, yaw: float = 0.0
+) -> None:
     """In-place rotation of a geometry.
 
     Parameters
@@ -513,8 +521,7 @@ def rotate_(geom: ProjectionGeometry, roll: float = 0., pitch: float = 0.,
     yaw : float
         Rotation around z-axis
     """
-    R = geom.xp.asarray(angles2mat(roll, pitch, yaw),
-                        dtype=geom.source_position.dtype)
+    R = geom.xp.asarray(angles2mat(roll, pitch, yaw), dtype=geom.source_position.dtype)
     geom.source_position[...] = geom.source_position @ R
     geom.detector_position[...] = geom.detector_position @ R
     geom.u[...] = geom.u @ R

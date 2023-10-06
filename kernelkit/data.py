@@ -19,8 +19,9 @@ def pitched_shape(array) -> tuple[int, int, int]:
     tuple
         The pitched shape of the array.
     """
-    bytes = (int(np.ceil(array.shape[-1] * array.dtype.itemsize / _CUDA_PITCH))
-             * _CUDA_PITCH)
+    bytes = (
+        int(np.ceil(array.shape[-1] * array.dtype.itemsize / _CUDA_PITCH)) * _CUDA_PITCH
+    )
     items = bytes / array.dtype.itemsize
     assert items.is_integer()
     return *array.shape[:-1], int(items)
@@ -71,8 +72,8 @@ def aspitched(array, xp=None):
 
     pitched_array = xp.zeros(pitched_shape(array), dtype=array.dtype)
     # TODO(Adriaan): can the following be done without invoking a copy?
-    pitched_array[..., :array.shape[-1]] = xp.asarray(array[...])
-    vw = pitched_array[..., :array.shape[-1]]
+    pitched_array[..., : array.shape[-1]] = xp.asarray(array[...])
+    vw = pitched_array[..., : array.shape[-1]]
     assert vw.flags.owndata is False
     assert vw.base is pitched_array
     return vw
