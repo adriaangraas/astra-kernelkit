@@ -9,29 +9,64 @@ from astrapy.geom.proj import ProjectionGeometry
 from astrapy.geom.vol import VolumeGeometry
 from astrapy.kernel import Kernel
 from astrapy.kernels.cone_bp import ConeBackprojection
-from astrapy.operator import ConebeamTransform
+from astrapy.operator import XrayTransform
 from astrapy.processing import preweight, filter as filt
 from astrapy.projector import ConeProjector, ConeBackprojector
 
 
-def fp(volume: Any, projection_geometry: Any, volume_geometry: Any,
+def fp(volume: Any,
+       projection_geometry: Any,
+       volume_geometry: Any,
        out: Sized = None):
-    op = ConebeamTransform(projection_geometry, volume_geometry)
+    """
+    Forward projection
+
+    Parameters
+    ----------
+    volume
+    projection_geometry
+    volume_geometry
+    out
+
+    Returns
+    -------
+    out : ndarray
+        The forward projection of the volume.
+    """
+    op = XrayTransform(projection_geometry, volume_geometry)
     vol = cp.asarray(volume, dtype=cp.float32)
     result = op(vol, out=out)
     return result.get() if out is None else out
 
 
-def bp(
-    projections: Any,
-    projection_geometry: List[ProjectionGeometry],
-    volume_geometry: VolumeGeometry,
-    filter: Any = None,
-    preproc_fn: Callable = None,
-    kernel: Kernel = None,
-    out: cp.ndarray = None,
-    projection_axes: Sequence[int] = (0, 1, 2),
-    **kwargs):
+def bp(projections: Any,
+       projection_geometry: List[ProjectionGeometry],
+       volume_geometry: VolumeGeometry,
+       filter: Any = None,
+       preproc_fn: Callable = None,
+       kernel: Kernel = None,
+       out: cp.ndarray = None,
+       projection_axes: Sequence[int] = (0, 1, 2),
+       **kwargs):
+    """
+    Backprojection
+
+    Parameters
+    ----------
+    projections : array-like
+        Either a 2D list of projections, or a 3D array of projections.
+    projection_geometry : List[ProjectionGeometry]
+        The projection geometries.
+    volume_geometry : VolumeGeometry
+        The volume geometry.
+    filter : Any
+        The filter to apply to the projections before backprojection.
+
+
+    Returns
+    -------
+
+    """
     if out is None:
         out = cp.zeros(volume_geometry.shape, cp.float32)
     else:
@@ -50,8 +85,7 @@ def bp(
     kwargs.update(projection_axes=projection_axes)
     ptor = ConeBackprojector(
         ConeBackprojection(**kwargs) if kernel is None else kernel,
-        texture_type='layered'
-    )
+        texture_type='layered')
     ptor.projection_geometry = projection_geometry
     ptor.volume_geometry = volume_geometry
     ptor.projections = projections
@@ -60,13 +94,12 @@ def bp(
     return out.get()
 
 
-def fdk(
-    projections: Any,
-    projection_geometry: Any,
-    volume_geometry: VolumeGeometry,
-    filter: Any = 'ramlak',
-    preproc_fn: Callable = None,
-    **kwargs):
+def fdk(projections: Any,
+        projection_geometry: Any,
+        volume_geometry: VolumeGeometry,
+        filter: Any = 'ramlak',
+        preproc_fn: Callable = None,
+        **kwargs):
     """Feldkamp-Davis-Kress algorithm"""
 
     return bp(projections,
@@ -77,29 +110,20 @@ def fdk(
               **kwargs)
 
 
-def sirt(
-    projections: np.ndarray,
-    projection_geometry: Any,
-    volume_geometry: VolumeGeometry,
-    iters: int = 100,
-    dtype=cp.float32,
-    verbose: bool = True,
-    mask: Any = None,
-    proj_mask: Any = True,
-    min_constraint: float = None,
-    max_constraint: float = None,
-    return_gpu: bool = False,
-    algo='gpu',
-    callback: callable = None):
+def sirt(projections: np.ndarray,
+         projection_geometry: Any,
+         volume_geometry: VolumeGeometry,
+         iters: int = 100,
+         dtype=cp.float32,
+         verbose: bool = True,
+         mask: Any = None,
+         proj_mask: Any = True,
+         min_constraint: float = None,
+         max_constraint: float = None,
+         return_gpu: bool = False,
+         algo='gpu',
+         callback: callable = None):
     """Simulateneous Iterative Reconstruction Technique
-
-    :param proj_mask: If `None` doesn't use one, unless `mask` is given,
-        then it generates the appropriate one.
-    :return:
-
-    Parameters
-    ----------
-
     """
     if len(projections) != len(projection_geometry):
         raise ValueError("Number of projections does not match number of"
@@ -122,7 +146,7 @@ def sirt(
     fptor.projection_geometry = projection_geometry
     fptor.volume_geometry = volume_geometry
 
-    bptor = ConeBackprojector(texture_type='pitch2d')
+    bptor = ConeBackprojector()
     bptor.projection_geometry = projection_geometry
     bptor.volume_geometry = volume_geometry
 

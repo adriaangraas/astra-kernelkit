@@ -1,21 +1,27 @@
-from typing import Any, Callable, List, Optional, Tuple
-import cupy as cp
-import numpy as np
 from abc import ABC
-
-from astrapy.projector import BaseProjector
-from astrapy.geom.proj import ProjectionGeometry
-from astrapy.geom.vol import VolumeGeometry
+from typing import List
 
 import astra
 import astra.experimental
+import cupy as cp
+import numpy as np
+
+from kernelkit.projector import BaseProjector
+from kernelkit.geom.proj import ProjectionGeometry
+from kernelkit.geom.vol import VolumeGeometry
 
 
-class CompatProjector(BaseProjector, ABC):
+def _geom2astra(g):
+    c = lambda x: (x[1], x[0], x[2])
+    d = lambda x: np.array((x[1], x[0], x[2])) * g.detector.pixel_width
+    e = lambda x: np.array((x[1], x[0], x[2])) * g.detector.pixel_height
+    return [*c(g.source_position), *c(g.detector_position), *d(g.u), *e(g.v)]
+
+
+class BaseProjectorAdapter(BaseProjector, ABC):
     """Base class for ASTRA projectors."""
 
     __slots__ = ('_volume', '_projections', '_vol_geom', '_proj_geom')
-
 
     def __init__(self):
         """Base class for ASTRA projectors."""
@@ -37,7 +43,7 @@ class CompatProjector(BaseProjector, ABC):
         ----------
         value : array-like
             The volume to project from."""
-        if not hasattr(self, 'volume_geometry'):
+        if hasattr(self, 'volume_geometry'):
             expected_shape = tuple(reversed(self.volume_geometry.shape))
             if expected_shape != value.shape:
                 raise ValueError(
@@ -46,6 +52,7 @@ class CompatProjector(BaseProjector, ABC):
                     f"{value.shape} instead.")
 
         # Make sure CuPy doesn't clean up the volume while ASTRA is busy
+        # by keeping a reference to the volume.
         assert value.dtype == cp.float32
         assert value.flags.c_contiguous
         self._volume = value
@@ -68,7 +75,7 @@ class CompatProjector(BaseProjector, ABC):
     @property
     def volume_axes(self):
         """The axes of the volume to project from."""
-        return (2, 1, 0)
+        return 2, 1, 0
 
     @property
     def projections(self) -> cp.ndarray:
@@ -84,7 +91,7 @@ class CompatProjector(BaseProjector, ABC):
         assert value.dtype == cp.float32
         assert value.flags.c_contiguous
 
-        if not hasattr(self, 'projection_geometry'):
+        if hasattr(self, 'projection_geometry'):
             expected_shape = (self.projection_geometry[0].detector.rows,
                               len(self.projection_geometry),
                               self.projection_geometry[0].detector.cols)
@@ -110,7 +117,7 @@ class CompatProjector(BaseProjector, ABC):
     @property
     def projection_axes(self):
         """The axes of the volume to project from."""
-        return (1, 0, 2)
+        return 1, 0, 2
 
     @property
     def volume_geometry(self) -> VolumeGeometry:
@@ -147,7 +154,7 @@ class CompatProjector(BaseProjector, ABC):
     @volume_geometry.deleter
     def volume_geometry(self):
         del self._vol_geom
-        del self._astra_vol_geom  # TODO: does this delete?
+        del self._astra_vol_geom
         try:
             del self._astra_projector_id
         except AttributeError:
@@ -193,18 +200,11 @@ class CompatProjector(BaseProjector, ABC):
     def _geoms2vectors(geoms: List[ProjectionGeometry]):
         """Convert a list of geometries to ASTRA vectors."""
 
-        def geom2astra(g):
-            c = lambda x: (x[1], x[0], x[2])
-            d = lambda x: np.array((x[1], x[0], x[2])) * g.detector.pixel_width
-            e = lambda x: np.array(
-                (x[1], x[0], x[2])) * g.detector.pixel_height
-            return [*c(g.source_position), *c(g.detector_position),
-                    *d(g.u), *e(g.v)]
-
-        vectors = np.zeros((len(geoms), 12))
-        for i, g in enumerate(geoms):
-            vectors[i] = geom2astra(g)
-        return vectors
+        # vectors = np.zeros((len(geoms), 12))
+        # for i, g in enumerate(geoms):
+        #     vectors[i] = _geom2astra(g)
+        # return vectors
+        return np.array([_geom2astra(g) for g in geoms])
 
     def projector3d(self):
         if not hasattr(self, '_astra_projector_id'):
@@ -225,7 +225,7 @@ class CompatProjector(BaseProjector, ABC):
         return self._astra_projector_id
 
 
-class CompatConeProjector(CompatProjector):
+class ConeProjectorAdapter(BaseProjectorAdapter):
     def __call__(self, additive=False):
         assert hasattr(self, '_astra_vol_link')
         assert hasattr(self, '_astra_proj_link')
@@ -238,7 +238,7 @@ class CompatConeProjector(CompatProjector):
         return self._projections
 
 
-class CompatConeBackprojector(CompatProjector):
+class ConeBackprojectorAdapter(BaseProjectorAdapter):
     def __call__(self, additive=False):
         assert hasattr(self, '_astra_vol_link')
         assert hasattr(self, '_astra_proj_link')

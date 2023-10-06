@@ -31,8 +31,8 @@ def geom(settings, angles, corrections: Any = True, verbose=None):
             pixel_width=g.detector.pixel_width,
             pixel_height=g.detector.pixel_height)
         geom = ProjectionGeometry(
-            source_pos=g.source_position,
-            det_pos=g.detector_position,
+            source_position=g.source_position,
+            detector_position=g.detector_position,
             u_unit=hv,
             v_unit=vv,
             detector=det)

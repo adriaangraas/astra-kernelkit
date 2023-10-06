@@ -2,14 +2,13 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, List, Optional, Tuple
 import cupy as cp
 
-from astrapy.geom.vol import VolumeGeometry
-from astrapy.geom.proj import ProjectionGeometry
-from astrapy.projector import (BaseProjector, ConeProjector, ConeBackprojector)
+from kernelkit.geom.vol import VolumeGeometry
+from kernelkit.geom.proj import Beam, ProjectionGeometry
+from kernelkit.projector import (BaseProjector, ConeProjector, ConeBackprojector)
 
 
-class Operator(ABC):
-    """Projectors that play friendly together as linear operators. Good for
-    algorithm design."""
+class BaseOperator(ABC):
+    """A mathematical operator."""
 
     @abstractmethod
     def __call__(self, input, out=None):
@@ -30,7 +29,9 @@ class Operator(ABC):
         raise NotImplementedError
 
 
-class XrayTransform(Operator):
+class ProjectorOperator(BaseOperator, ABC):
+    """An operator using a forward projection and backprojection."""
+
     def __init__(self,
                  projection_geometry: List[ProjectionGeometry],
                  volume_geometry: VolumeGeometry,
@@ -40,7 +41,6 @@ class XrayTransform(Operator):
         self.backprojector = backprojector
         self.projector.projection_geometry = projection_geometry
         self.projector.volume_geometry = volume_geometry
-        self._T = None
 
     @property
     def range_shape(self) -> Tuple:
@@ -72,7 +72,7 @@ class XrayTransform(Operator):
     def T(self):
         self_ = self
 
-        class _Adjoint(Operator):
+        class _Adjoint(BaseOperator):
             def __init__(self):
                 self.projector = self_.backprojector
                 self.projector.projection_geometry = (
@@ -106,21 +106,30 @@ class XrayTransform(Operator):
             def T(self):
                 return self_
 
-        if self._T is None:
+        if not hasattr(self, '_T'):
             self._T = _Adjoint()
         return self._T
 
 
-class ConebeamTransform(XrayTransform):
+class XrayTransform(ProjectorOperator):
+    """A mathematical operator representing the X-ray transform."""
+
     def __init__(self,
                  projection_geometry: Any,
                  volume_geometry: Any,
                  volume_axes: Tuple = (0, 1, 2),
                  projection_axes: Tuple = (0, 1, 2),
                  astra_compat: bool = False):
+        """Create an X-ray transform operator."""
+
+        for p in projection_geometry:
+            if p.beam != Beam.CONE:
+                raise NotImplementedError("Only cone beam geometry is "
+                                          "supported at the moment.")
+
         if astra_compat:
-            from astrapy.astra_compat import (CompatConeProjector,
-                                              CompatConeBackprojector)
+            from kernelkit.toolbox import (CompatConeProjector,
+                                           CompatConeBackprojector)
             if projection_axes != (1, 0, 2):
                 raise ValueError("ASTRA Toolbox compatible projectors can only"
                                  " be used with `projection_axes=(1, 0, 2)`."

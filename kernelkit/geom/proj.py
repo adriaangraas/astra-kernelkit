@@ -1,9 +1,16 @@
 import copy
 import warnings
 from dataclasses import dataclass
+from enum import Enum
 from typing import List, Sequence
 import numpy as np
 import transforms3d
+
+
+class Beam(Enum):
+    """Beam type."""
+    CONE = 'cone'
+    PARALLEL = 'parallel'
 
 
 @dataclass
@@ -33,18 +40,19 @@ class ProjectionGeometry:
     ANGLES_CONVENTION = "sxyz"
 
     def __init__(self,
-                 source_pos: Sequence,
-                 det_pos: Sequence,
+                 source_position: Sequence,
+                 detector_position: Sequence,
                  u_unit: Sequence,
                  v_unit: Sequence,
-                 detector):
+                 detector: Detector,
+                 beam: str = Beam.CONE):
         """Initialize a projection geometry.
 
         Parameters
         ----------
-        source_pos : Sequence
+        source_position : Sequence
             Position of the source in the world frame.
-        det_pos : Sequence
+        detector_position : Sequence
             Position of the detector in the world frame.
         u_unit : Sequence
             Vector pointing in the horizontal direction of the detector of
@@ -54,12 +62,18 @@ class ProjectionGeometry:
             length 1.
         detector : Detector
             Detector object, see :class:`astrapy.geom.Detector`.
+        beam : str
+            Beam type, either 'cone' or 'parallel'.
         """
-        self.source_position = np.array(source_pos)
-        self.detector_position = np.array(det_pos)
+        self.source_position = np.array(source_position)
+        self.detector_position = np.array(detector_position)
         self.detector = detector
         self.u = np.array(u_unit)
         self.v = np.array(v_unit)
+
+        if beam not in Beam:
+            raise ValueError(f"Beam type must be one of {Beam}.")
+        self.beam = beam
 
     @property
     def detector_extent_min(self):
@@ -220,7 +234,7 @@ class GeometrySequence:
         if xp is None:
             xp = cls.xp
 
-        _cvrt = lambda arr, dtype: xp.ascontiguousarray(
+        def _cvrt(arr, dtype): return xp.ascontiguousarray(
             xp.array(arr, dtype=dtype))
 
         ds = cls.DetectorSequence(

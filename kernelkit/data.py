@@ -37,6 +37,11 @@ def ispitched(array) -> bool:
     ----------
     array : array-like
         The array to check.
+
+    Returns
+    -------
+    bool
+        `True` if the array is pitched, `False` otherwise.
     """
     arr = array.base if array.base is not None else array
     return pitched_shape(arr) == arr.shape
@@ -46,7 +51,7 @@ def aspitched(array, xp=None):
     """Pads array to pitched shape and returns a view in original shape.
 
     This function can also be used to transfer a non-pitched CPU array to a
-    pitched GPU array.
+    pitched GPU array, by setting `xp` to `cp`.
 
     Parameters
     ----------
@@ -54,7 +59,7 @@ def aspitched(array, xp=None):
         The array to pad to pitched shape.
     xp : array module, optional
         Array module used for the new array in the pitched shape. If
-    `None`, the module of the given array is used.
+        `None`, the module of the given array is used.
 
     Returns
     -------

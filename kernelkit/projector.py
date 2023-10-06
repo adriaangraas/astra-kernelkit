@@ -1,3 +1,4 @@
+import warnings
 from typing import Any, Callable, List, Optional, Tuple
 import cupy as cp
 from abc import ABC, abstractmethod
@@ -13,7 +14,7 @@ from astrapy.kernels.cone_fp import ConeProjection
 class BaseProjector(ABC):
     """Base class for projectors.
 
-    These classes are optimized for reusing geometries and memory for typical
+    Projectors are optimized for the reuse of geometries and memory for typical
     reconstruction problems, where there is a single set of projections and a
     single reconstruction volume."""
 
@@ -109,7 +110,11 @@ class ConeBaseProjector(BaseProjector, ABC):
     def projection_geometry(self, value: List[ProjectionGeometry]):
         del self.projection_geometry
         self._proj_geom = value
-        self._proj_geom_seq = GeometrySequence.fromList(self._proj_geom)
+        if not isinstance(value, GeometrySequence):
+            seq = GeometrySequence.fromList(self._proj_geom)
+        else:
+            seq = value
+        self._proj_geom_seq = seq
 
     @projection_geometry.deleter
     def projection_geometry(self):
@@ -174,7 +179,6 @@ class ConeProjector(ConeBaseProjector):
         except AttributeError:
             raise AttributeError("Volume not set. Use the `volume` setter "
                                  "before calling the projector.")
-
 
     @volume.setter
     def volume(self, value):
@@ -259,7 +263,7 @@ class ConeBackprojector(ConeBaseProjector):
     def __init__(self, kernel: ConeBackprojection = None,
                  texture_type: str = 'auto',
                  use_graphs: bool = True,
-                 **kwargs):
+                 **kernel_kwargs):
         """
         Constructor.
 
@@ -269,18 +273,17 @@ class ConeBackprojector(ConeBaseProjector):
             The kernel to use for backprojection. If `None`, the default kernel
             is used.
         texture_type : str, optional
-            The type of texture to use for the projection data. Can be either
-            'array' or 'pitch2d'. The default is 'auto'. If 'pitch2d' is
-            chosen, the projection data is copied into a pitched GPU array on
-            first arrival. Creation of 'pitch2d' textures is faster, but usage
-            of 'array' textures is faster. If 'auto', it is 'pitch2d' if a list
-            or pitched arrays is given, 'array2d' if a list of arrays is given,
-            'layered' if a 3D cupy array with first axis is the angle axis,
+            The type of texture to use for the projection data. The default is
+            'auto'. If 'pitch2d', the projection data is copied into
+            a pitched GPU array. Creation of 'pitch2d' is faster, but lookup
+            in 'array' textures is faster. If 'auto', it is 'pitch2d' if a list
+            of pitched arrays is given, 'array2d' if a list of arrays is given,
+            'layered' if a 3D cupy  array with first axis is the angle axis,
             and 'array' otherwise.
 
         """
-        K = ConeBackprojection(**kwargs) if kernel is None else kernel
-        if kernel is not None and len(kwargs) > 0:
+        K = ConeBackprojection(**kernel_kwargs) if kernel is None else kernel
+        if kernel is not None and len(kernel_kwargs) > 0:
             raise ValueError(
                 "If `kernel` is given, other keyword arguments are "
                 "not passed through the kernel.")
@@ -289,8 +292,16 @@ class ConeBackprojector(ConeBaseProjector):
         if self._texture_type not in self.TEXTURE_TYPES:
             raise ValueError(f"`texture_type` not supported. Please choose "
                              f"one of the following: {self.TEXTURE_TYPES}.")
-        self._texture_cuda_array_valid = True
-        self._use_graphs = use_graphs
+        self._texture_cuda_array_valid = True  # projs are converted to texture
+        self._use_graphs = use_graphs  # whether to use CUDA graphs
+
+    @ConeBaseProjector.volume_geometry.setter
+    def volume_geometry(self, value: VolumeGeometry):
+        try:
+            del self._params
+        except AttributeError:
+            pass
+        ConeBaseProjector.volume_geometry.fset(self, value)
 
     @property
     def volume(self) -> Optional[cp.ndarray]:
@@ -303,7 +314,7 @@ class ConeBackprojector(ConeBaseProjector):
 
     @volume.setter
     def volume(self, value):
-        """Sets or updates the reconstruction volume in place."""
+        """Sets the reconstruction volume."""
         if self.volume_geometry is not None:
             expected_shp = (self._vol_geom.shape[i] for i in
                             self._K.volume_axes)
@@ -312,12 +323,20 @@ class ConeBackprojector(ConeBaseProjector):
                     f"Volume shape {value.shape} does not match volume "
                     f"geometry {self._vol_geom.shape} with axes "
                     f"{self._K.volume_axes}.")
+
+        if hasattr(self, '_vol') and hasattr(self, '_graph'):
+            # TODO(Adriaan): create performance logging/warnings
+            warnings.warn("Setting a new volume invalidates the CUDA graph. "
+                          "For best performance, set the volume only once "
+                          "and update it in place.")
+            del self._graph
+
         self._vol = value
 
     @volume.deleter
     def volume(self):
-        """Deletes the reconstruction volume and frees texture memory."""
-        self._vol = None
+        """Deletes the reconstruction volume"""
+        del self._vol
 
     @property
     def projections(self):
@@ -331,14 +350,16 @@ class ConeBackprojector(ConeBaseProjector):
 
     @projections.setter
     def projections(self, value: Any):
-        """Sets or updates the projection data in place. The array is converted
-        to a pitched texture if `texture_type` is 'pitch2d'. If the texture
-        type is 'array', this maintains the texture memory, but invalidates it,
-        triggering a new conversion on th next __call__.
+        """Sets or updates the projection data in place.
+
+        The array is possibly copied to a pitched layout if `texture_type` is
+        'pitch2d'. If the texture type is 'array', updating projections
+        invalidates current textures, triggering a new conversion on the next
+        `__call__`.
 
         Parameters
         ----------
-        value : cp.ndarray
+        value : cp.ndarray or list
             The projection data."""
         if not isinstance(value, cp.ndarray) and not isinstance(value, List):
             raise ValueError("Projections must be a cupy array or list.")
@@ -372,22 +393,18 @@ class ConeBackprojector(ConeBaseProjector):
                         assert p.shape == v.shape
                     p[...] = v  # update, works also in 3D
         else:
-            if self._texture_type == 'auto':  # find out texture type here
+            if self._texture_type == 'auto':  # find out texture type
                 if isinstance(value, List):
-                    if ispitched(value[0]):
-                        self._texture_type = 'pitch2d'
-                    else:
-                        self._texture_type = 'array2d'
+                    self._texture_type = 'array2d'
                 else:
                     if self.projection_axes[0] == 0:
                         self._texture_type = 'layered'
                     else:
                         self._texture_type = 'array'
-                print(f"Using texture type {self._texture_type}.")
 
             if isinstance(value, List):
                 if self._K.projection_axes[0] != 0:
-                    raise ValueError("Can only use list of projections when "
+                    raise ValueError("Can only use a list of projections when "
                                      "projection axis is 0.")
 
             if self._texture_type == 'pitch2d':
@@ -399,7 +416,7 @@ class ConeBackprojector(ConeBaseProjector):
                                          "the first projection axis is 0.")
                 self._projections = value
 
-        # invalidate CUDA arrays, but keep allocated
+        # invalidate CUDA arrays to signal new projections
         if self._texture_type in ('array', 'array2d'):
             self._texture_cuda_array_valid = False  # invalidate CUDA array
 
@@ -511,12 +528,17 @@ class ConeBackprojector(ConeBaseProjector):
         params = self._compute_params()
         if self._use_graphs and hasattr(self, '_graph'):
             self._graph.launch()
-            print('.', end='')
+            print(',', end='', flush=True)
         else:
-            if self._use_graphs and stream != stream.null:
-                stream.begin_capture()
+            print('.', end='', flush=True)
+            if self._use_graphs and stream:
+                if stream != stream.null:
+                    stream.begin_capture()
+                else:
+                    warnings.warn("Cannot capture CUDA graph from null stream."
+                                  " Falling back to non-graph mode.")
             self._K(txts, params, self._vol, self.volume_geometry)
-            if stream.is_capturing():
+            if self._use_graphs and stream.is_capturing():
                 self._graph = stream.end_capture()
                 self._graph.launch()
 
@@ -528,11 +550,10 @@ class ConeBackprojector(ConeBaseProjector):
             self._vol[...] = cp.reshape(
                 self._vol,
                 tuple(reversed(self._vol.shape))).T
-        # TODO(Adriaan): quickly disabled for kernel tuner:
-        # else:
-        #     raise NotImplementedError(
-        #         "Sorry! Not yet implemented, but should"
-        #         " be easy enough to do so. Please open an issue.")
+        else:
+            raise NotImplementedError(
+                "Sorry! Not yet implemented, but should"
+                " be easy enough to do so. Please open an issue.")
 
     def clear(self):
         """Clear cached textures and CUDA graph."""

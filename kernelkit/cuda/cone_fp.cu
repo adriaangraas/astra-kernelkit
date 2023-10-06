@@ -113,7 +113,6 @@ __global__ void cone_fp(
     int endCol;
     const int pixelsPerThread = {{ pixels_per_thread }};
 
-//    {% if mode_row %}
     row = blockIdx.x * blockDim.x + threadIdx.x;
     if (row >= rows)
         return;
@@ -123,17 +122,6 @@ __global__ void cone_fp(
     endCol = col + pixelsPerThread;
     if (endCol > cols)
         endCol = cols;
-//    {% else %}
-//        col = blockIdx.x * blockDim.x + threadIdx.x;
-//        if (col >= cols)
-//            return;
-//        endCol = col + 1;
-//
-//        row = blockIdx.y * pixelsPerThread;
-//        endRow = row + pixelsPerThread;
-//        if (endRow > rows)
-//            endRow = rows;
-//    {% endif %}
 
     const int proj = offsetProj + blockIdx.z;
 

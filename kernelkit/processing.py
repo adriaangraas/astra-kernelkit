@@ -65,6 +65,11 @@ def _filter(num, filter_name: str = "ramlak", use_cupy: bool = True):
         "cosine". If you need a different filter please file an issue.
     use_cupy : bool, optional
         Whether to use cupy or numpy.
+
+    Returns
+    -------
+    four_filter : array-like
+        The filter in the Fourier domain.
     """
     assert num % 2 == 0, "Filter must be even."
     xp = cp if use_cupy else np
@@ -75,14 +80,15 @@ def _filter(num, filter_name: str = "ramlak", use_cupy: bool = True):
     g[0] = 0.25
     g[1::2] = -1 / (xp.pi * n[1::2]) ** 2
     four_filter = 4 * xp.real(xp.fft.fft(g))
-    if filter_name == "ramp" or filter_name == "ramlak":
+    if filter_name.lower() == "ramp" or filter_name.lower() == "ramlak":
         pass
-    elif filter_name == "cosine":
+    elif filter_name.lower() == "cosine":
         freq = xp.linspace(0, xp.pi, num, endpoint=False)
         cosine_filter = xp.fft.fftshift(xp.sin(freq))
         four_filter *= cosine_filter
     else:
-        raise ValueError(f"Filter with `filter_name` {filter_name} unknown.")
+        raise ValueError(f"Filter with `filter_name` {filter_name} not known"
+                         f" or not yet implemented.")
     return four_filter
 
 
@@ -103,8 +109,7 @@ def filter(projections, verbose: bool = False, filter: str = 'ramlak'):
     # this function follows structurally scikit-image's iradon()
     padding_shape = max(64, int(2 ** int(
         xp.ceil(xp.log2(2 * projections[0].shape[1])))))
-    four_filt = _filter(padding_shape, filter_name=filter,
-                        use_cupy=xp == cp)
+    four_filt = _filter(padding_shape, filter_name=filter, use_cupy=xp == cp)
     p_tmp = xp.empty((projections[0].shape[0], padding_shape))
     for p in tqdm(projections, desc="Filtering", disable=not verbose):
         assert cp.get_array_module(p) == xp, (
@@ -157,7 +162,6 @@ def preweight(projections: cp.ndarray,
         Whether to show a progress bar.
     """
     xp = cp.get_array_module(projections[0])
-    # prepare computation of all pixel vectors
     rows, cols = xp.mgrid[0:geoms[0].detector.rows, 0:geoms[0].detector.cols]
     rows_view = xp.repeat(rows[:, :, xp.newaxis], 3, 2)
     cols_view = xp.repeat(cols[:, :, xp.newaxis], 3, 2)

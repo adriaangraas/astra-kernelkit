@@ -5,7 +5,7 @@ from typing import Any, Sequence, Sized, Tuple
 from astrapy.geom import normalize_
 from astrapy.geom.proj import GeometrySequence
 from astrapy.geom.vol import VolumeGeometry
-from astrapy.kernel import Kernel, copy_to_symbol, texture_shape
+from astrapy.kernel import Kernel, copy_to_symbol
 import numpy as np
 import cupy as cp
 
@@ -77,7 +77,7 @@ class ConeProjection(Kernel):
 
     def compile(self, nr_projs):
         return self._compile(
-            names=self._get_names(),
+            name_expressions=self._get_names(),
             template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
                              'pixels_per_thread': self.PIXELS_PER_Y_THREAD,
                              'nr_projs_global': nr_projs,
@@ -252,8 +252,8 @@ class ConeProjection(Kernel):
 
     @staticmethod
     def _upload_geometries(
-        geometries,
-        module: cp.RawModule):
+            geometries,
+            module: cp.RawModule):
         """Transfer geometries to device as structure of arrays."""
         # TODO(Adriaan): maybe make a mapping between variables
         xp = geometries.xp

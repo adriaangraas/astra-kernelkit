@@ -24,7 +24,7 @@ def _voxel_size(shape,
 
 
 class VolumeGeometry:
-    """A minimalist class for storing volume geometry information.
+    """Minimalist class for storing the geometry of a reconstruction volume.
 
     See Also
     --------
@@ -44,7 +44,7 @@ class VolumeGeometry:
         shape : array-like
             The shape of the volume.
         voxel_size : array-like
-            The size of a voxel.
+            The size of a single voxel.
         extent_min : array-like
             The minimum extent of the volume.
         extent_max : array-like
@@ -56,9 +56,9 @@ class VolumeGeometry:
         Notes
         -----
         The `shape`, `voxel_size`, `extent_min`, `extent_max`, and `rotation`
-        parameters are all stored as tuples.
-        They contain rundant information, to generate this object from only
-        a few parameters, see `astrapy.geom.vol.resolve_volume_geometry`.
+        parameters are all stored as tuples. They contain rundant information,
+        to generate this object from only a few parameters, see
+        `astrapy.geom.vol.resolve_volume_geometry`.
         """
         self.shape = tuple(np.array(shape, dtype=np.int32))
         self.voxel_size = tuple(np.array(voxel_size, dtype=np.float32))
