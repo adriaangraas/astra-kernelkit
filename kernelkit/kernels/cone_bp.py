@@ -10,9 +10,13 @@ import numpy as np
 from kernelkit.geom import normalize_
 from kernelkit.geom.proj import GeometrySequence
 from kernelkit.geom.vol import VolumeGeometry
-from kernelkit.kernel import (KernelMemoryUnpreparedException,
-                              KernelNotCompiledException, copy_to_symbol,
-                              cuda_float4, BaseKernel)
+from kernelkit.kernel import (
+    KernelMemoryUnpreparedException,
+    KernelNotCompiledException,
+    copy_to_symbol,
+    cuda_float4,
+    BaseKernel,
+)
 
 
 class VoxelDrivenConeBP(BaseKernel):
@@ -26,18 +30,21 @@ class VoxelDrivenConeBP(BaseKernel):
         The fetching approach (i.e., the texture fetching function to call in
         the kernel) does not correspond one-on-one to texture objects.
         """
-        Tex3D = '3D'  # for single texture object from 3D CUDA Array
-        Tex2DLayered = '2DLayered'  # yes, for layered *3D* CUDA array, no typo
-        Tex2D = '2D'  # List of pitch2D, or list of 2D CUDA arrays
+
+        Tex3D = "3D"  # for single texture object from 3D CUDA Array
+        Tex2DLayered = "2DLayered"  # yes, for layered *3D* CUDA array, no typo
+        Tex2D = "2D"  # List of pitch2D, or list of 2D CUDA arrays
 
     voxels_per_block = (16, 32, 6)  # ASTRA Toolbox default
     projs_per_block = 32  # ASTRA Toolbox default
 
-    def __init__(self,
-                 voxels_per_block: tuple = None,
-                 projs_per_block: int = None,
-                 volume_axes: tuple = (0, 1, 2),
-                 projection_axes: tuple = (0, 1, 2)):
+    def __init__(
+        self,
+        voxels_per_block: tuple = None,
+        projs_per_block: int = None,
+        volume_axes: tuple = (0, 1, 2),
+        projection_axes: tuple = (0, 1, 2),
+    ):
         """Conebeam backprojection kernel.
 
         Parameters
@@ -62,13 +69,15 @@ class VoxelDrivenConeBP(BaseKernel):
         kernelkit.kernel.VoxelDrivenConeFP : Conebeam forward projection kernel
         kernelkit.kernel.BaseKernel : Base class for CUDA kernels
         """
-        super().__init__('cone_bp.cu')
+        super().__init__("cone_bp.cu")
         if voxels_per_block is not None and len(voxels_per_block) != 3:
-            raise ValueError('`voxels_per_block` must have 3 elements.')
-        self._vox_block = (voxels_per_block if voxels_per_block is not None
-                           else self.voxels_per_block)
-        self._projs_block = (projs_per_block if projs_per_block is not None
-                             else self.projs_per_block)
+            raise ValueError("`voxels_per_block` must have 3 elements.")
+        self._vox_block = (
+            voxels_per_block if voxels_per_block is not None else self.voxels_per_block
+        )
+        self._projs_block = (
+            projs_per_block if projs_per_block is not None else self.projs_per_block
+        )
         self._vol_axs = volume_axes
         self._proj_axs = projection_axes
         self._params_are_set = False
@@ -81,9 +90,11 @@ class VoxelDrivenConeBP(BaseKernel):
     def projection_axes(self):
         return self._proj_axs
 
-    def compile(self,
-                max_projs: int = 1024,
-                texture: TextureFetching | str = TextureFetching.Tex3D) -> cp.RawModule:
+    def compile(
+        self,
+        max_projs: int = 1024,
+        texture: TextureFetching | str = TextureFetching.Tex3D,
+    ) -> cp.RawModule:
         """Compile the kernel.
 
         Parameters
@@ -98,31 +109,39 @@ class VoxelDrivenConeBP(BaseKernel):
             specified in `TextureFetching`.
         """
         if texture not in self.TextureFetching:
-            raise ValueError(
-                f"`texture` must be one of {self.TextureFetching}.")
+            raise ValueError(f"`texture` must be one of {self.TextureFetching}.")
 
         if texture.value == self.TextureFetching.Tex2D.value:
             if self._proj_axs[0] != 0:
-                raise ValueError("If an array of texture pointers is given, "
-                                 "the first `projection_axes` axis must be "
-                                 "angles, i.e., must be 0.")
-        elif texture.value in (self.TextureFetching.Tex2DLayered.value,
-                               self.TextureFetching.Tex3D):
+                raise ValueError(
+                    "If an array of texture pointers is given, "
+                    "the first `projection_axes` axis must be "
+                    "angles, i.e., must be 0."
+                )
+        elif texture.value in (
+            self.TextureFetching.Tex2DLayered.value,
+            self.TextureFetching.Tex3D,
+        ):
             if self._proj_axs[0] != 0:
-                raise ValueError("If a 3D texture is given, the first "
-                                 "`projection_axes` axis must be angles, "
-                                 "i.e., must be 0.")
+                raise ValueError(
+                    "If a 3D texture is given, the first "
+                    "`projection_axes` axis must be angles, "
+                    "i.e., must be 0."
+                )
 
         self._compile(
-            name_expressions=('cone_bp',),
-            template_kwargs={'nr_vxls_block_x': self._vox_block[0],
-                             'nr_vxls_block_y': self._vox_block[1],
-                             'nr_vxls_block_z': self._vox_block[2],
-                             'nr_projs_block': self._projs_block,
-                             'nr_projs_global': max_projs,
-                             'texture': texture.value,
-                             'volume_axes': self._vol_axs,
-                             'projection_axes': self._proj_axs})
+            name_expressions=("cone_bp",),
+            template_kwargs={
+                "nr_vxls_block_x": self._vox_block[0],
+                "nr_vxls_block_y": self._vox_block[1],
+                "nr_vxls_block_z": self._vox_block[2],
+                "nr_projs_block": self._projs_block,
+                "nr_projs_global": max_projs,
+                "texture": texture.value,
+                "volume_axes": self._vol_axs,
+                "projection_axes": self._proj_axs,
+            },
+        )
         self._module.compile()
 
     def set_params(self, params: Sequence):
@@ -134,21 +153,18 @@ class VoxelDrivenConeBP(BaseKernel):
             Sequence of parameters for each projection. Can be obtained
             with `VoxelDrivenConeBP.geoms2params()`.
         """
-        if (len(params) // 12
-            > self._compiled_template_kwargs['nr_projs_global']):
+        if len(params) // 12 > self._compiled_template_kwargs["nr_projs_global"]:
             raise ValueError(
                 f"Number of projections, {len(params)}, exceeds the "
-                f"the maximum of the compiled kernel, namely "
+                "the maximum of the compiled kernel, namely "
                 f"{self._compiled_template_kwargs['nr_projs_global']}. "
-                f"Please recompile the kernel with a higher "
-                f"`max_projs`.")
-        copy_to_symbol(self._module, 'params', params)
+                "Please recompile the kernel with a higher "
+                "`max_projs`."
+            )
+        copy_to_symbol(self._module, "params", params)
         self._params_are_set = True
 
-    def __call__(self,
-                 textures: Any,
-                 volume: Any,
-                 volume_geometry: VolumeGeometry):
+    def __call__(self, textures: Any, volume: Any, volume_geometry: VolumeGeometry):
         """XrayBackprojection with conebeam geometry.
 
         Parameters
@@ -176,78 +192,93 @@ class VoxelDrivenConeBP(BaseKernel):
             if volume.dtype not in self.SUPPORTED_DTYPES:
                 raise NotImplementedError(
                     f"Volume has a dtype '{volume.dtype}'. However, currently "
-                    f"there is only support for dtype={self.SUPPORTED_DTYPES}.")
+                    f"there is only support for dtype={self.SUPPORTED_DTYPES}."
+                )
         else:
             raise TypeError("`volume` must be a CuPy ndarray.")
-        assert volume.flags.c_contiguous is True, (
-            f"`{self.__class__.__name__}` is not tested without "
-            f"C-contiguous data.")
+        assert (
+            volume.flags.c_contiguous is True
+        ), f"`{self.__class__.__name__}` is not tested without C-contiguous data."
 
         if not volume_geometry.has_isotropic_voxels():
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic "
-                f"voxels yet.")
+                "voxels yet."
+            )
 
         if not self.is_compiled:
             raise KernelNotCompiledException(
-                "Please compile the kernel with `compile()`.")
+                "Please compile the kernel with `compile()`."
+            )
 
         if isinstance(textures, cp.ndarray):
             if not textures.dtype == cp.int64:
-                raise ValueError("Please give in an array of pointers to "
-                                 "TextureObject, or one 3D TextureObject.")
-            assert (self._compiled_template_kwargs['texture']
-                    == self.TextureFetching.Tex2D.value), (
-                f"Kernel was compiled with texture type "
+                raise ValueError(
+                    "Please give in an array of pointers to "
+                    "TextureObject, or one 3D TextureObject."
+                )
+            assert (
+                self._compiled_template_kwargs["texture"]
+                == self.TextureFetching.Tex2D.value
+            ), (
+                "Kernel was compiled with texture type "
                 f"{self._compiled_template_kwargs['texture']}, "
-                f"but given '{self.TextureFetching.Tex2D.value}'.")
+                f"but given '{self.TextureFetching.Tex2D.value}'."
+            )
             nr_projs = len(textures)
         elif isinstance(textures, TextureObject):
             assert textures.ResDesc.cuArr is not None, (
                 "A single texture object for all the projections has been "
-                "passed, but it does not contain a CUDA array attached.")
+                "passed, but it does not contain a CUDA array attached."
+            )
             if textures.ResDesc.cuArr.flags % 2 == 1:
-                assert (self._compiled_template_kwargs['texture']
-                        == self.TextureFetching.Tex2DLayered.value), (
-                    f"Kernel was compiled with texture type "
+                assert (
+                    self._compiled_template_kwargs["texture"]
+                    == self.TextureFetching.Tex2DLayered.value
+                ), (
+                    "Kernel was compiled with texture type "
                     f"{self._compiled_template_kwargs['texture']}, "
-                    f"but given '{self.TextureFetching.Tex2DLayered.value}'.")
+                    f"but given '{self.TextureFetching.Tex2DLayered.value}'."
+                )
             else:
-                if (self._compiled_template_kwargs['texture']
-                        != self.TextureFetching.Tex3D.value):
+                if (
+                    self._compiled_template_kwargs["texture"]
+                    != self.TextureFetching.Tex3D.value
+                ):
                     raise ValueError(
-                        f"Kernel was compiled with texture type "
+                        "Kernel was compiled with texture type "
                         f"{self._compiled_template_kwargs['texture']}, "
-                        f"but given '{self.TextureFetching.Tex3D.value}'.")
+                        f"but given '{self.TextureFetching.Tex3D.value}'."
+                    )
             cuArr = textures.ResDesc.cuArr
             dims = cuArr.depth, cuArr.height, cuArr.width
             nr_projs = dims[self._proj_axs[0]]
         else:
-            raise ValueError("Please give in an array of pointers to "
-                             "TextureObject, or one 3D TextureObject.")
+            raise ValueError(
+                "Please give in an array of pointers to "
+                "TextureObject, or one 3D TextureObject."
+            )
 
         if not self._params_are_set:
             raise KernelMemoryUnpreparedException(
-                "Please set the parameters with `set_params()`.")
+                "Please set the parameters with `set_params()`."
+            )
 
         cone_bp = self._module.get_function("cone_bp")
         volume_shape = volume_geometry.shape
         vox_vol = cp.float32(volume_geometry.voxel_volume())
-        blocks = np.ceil(np.asarray(volume_shape) / self._vox_block).astype(
-            np.int32)
+        blocks = np.ceil(np.asarray(volume_shape) / self._vox_block).astype(np.int32)
         for start in range(0, nr_projs, self._projs_block):
-            cone_bp((blocks[0] * blocks[1], blocks[2]),  # grid
-                    (self._vox_block[0], self._vox_block[1]),  # threads
-                    (textures,
-                     volume,
-                     start,
-                     nr_projs,
-                     *volume_shape,
-                     vox_vol))
+            cone_bp(
+                (blocks[0] * blocks[1], blocks[2]),  # grid
+                (self._vox_block[0], self._vox_block[1]),  # threads
+                (textures, volume, start, nr_projs, *volume_shape, vox_vol),
+            )
 
     @staticmethod
-    def geoms2params(projection_geometry, volume_geometry: VolumeGeometry,
-                     with_adjoint_scaling = True):
+    def geoms2params(
+        projection_geometry, volume_geometry: VolumeGeometry, with_adjoint_scaling=True
+    ):
         """Compute kernel parameters
 
         Parameters
@@ -303,9 +334,13 @@ class VoxelDrivenConeBP(BaseKernel):
         #   complicating the code here tremendously, and I'm not if
         #   it is necessary to do it together with backprojection.
         cr = xp.cross(u, v)  # maintain f32
-        cr *= xp.array([vox_size[1] * vox_size[2],
-                        vox_size[0] * vox_size[2],
-                        vox_size[0] * vox_size[1]])
+        cr *= xp.array(
+            [
+                vox_size[1] * vox_size[2],
+                vox_size[0] * vox_size[2],
+                vox_size[0] * vox_size[1],
+            ]
+        )
 
         scale = xp.sqrt(xp.linalg.norm(cr, axis=1))
 
@@ -340,18 +375,20 @@ class VoxelDrivenConeBP(BaseKernel):
             w=scale * xp.linalg.det(xp.asarray((s, v, d)).swapaxes(0, 1)),
             x=scale * _det3x(v, s_min_d),
             y=-scale * _det3y(v, s_min_d),
-            z=scale * _det3z(v, s_min_d))
+            z=scale * _det3z(v, s_min_d),
+        )
         numerator_v = cuda_float4(
             w=-scale * xp.linalg.det(xp.asarray((s, u, d)).swapaxes(0, 1)),
             x=-scale * _det3x(u, s_min_d),
             y=scale * _det3y(u, s_min_d),
-            z=-scale * _det3z(u, s_min_d))
+            z=-scale * _det3z(u, s_min_d),
+        )
         denominator = cuda_float4(
             w=scale * xp.linalg.det(xp.asarray((u, v, s)).swapaxes(0, 1)),
             x=-scale * _det3x(u, v),
             y=scale * _det3y(u, v),
-            z=-scale * _det3z(u, v))
+            z=-scale * _det3z(u, v),
+        )
         return cp.asarray(
-            numerator_u.to_list() +
-            numerator_v.to_list() +
-            denominator.to_list()).T.flatten()
+            numerator_u.to_list() + numerator_v.to_list() + denominator.to_list()
+        ).T.flatten()

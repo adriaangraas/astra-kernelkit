@@ -18,9 +18,14 @@ class RayDrivenConeFP(BaseKernel):
     pixels_in_x_block = 32
     pixels_in_y_thread = 32
 
-    def __init__(self, pixels_per_thread: tuple = None,
-                 slices_per_block: int = None, volume_axes: tuple = (0, 1, 2),
-                 projection_axes: tuple = (0, 1, 2), *args):
+    def __init__(
+        self,
+        pixels_per_thread: tuple = None,
+        slices_per_block: int = None,
+        volume_axes: tuple = (0, 1, 2),
+        projection_axes: tuple = (0, 1, 2),
+        *args,
+    ):
         """Conebeam forward projection kernel.
 
         Parameters
@@ -55,7 +60,7 @@ class RayDrivenConeFP(BaseKernel):
         self._vol_axs = volume_axes
         self._proj_axs = projection_axes
         self._module: cp.RawModule
-        super().__init__('cone_fp.cu', *args)
+        super().__init__("cone_fp.cu", *args)
 
     @property
     def volume_axes(self) -> tuple:
@@ -67,20 +72,27 @@ class RayDrivenConeFP(BaseKernel):
 
     @staticmethod
     def _get_names() -> tuple:
-        return f'cone_fp<DIR_X>', f'cone_fp<DIR_Y>', f'cone_fp<DIR_Z>'
+        return f"cone_fp<DIR_X>", f"cone_fp<DIR_Y>", f"cone_fp<DIR_Z>"
 
     def compile(self, nr_projs):
         return self._compile(
             name_expressions=self._get_names(),
-            template_kwargs={'slices_per_thread': self.slices_per_thread,
-                             'pixels_per_thread': self.pixels_in_y_thread,
-                             'nr_projs_global': nr_projs,
-                             'volume_axes': self._vol_axs,
-                             'projection_axes': self._proj_axs, })
+            template_kwargs={
+                "slices_per_thread": self.slices_per_thread,
+                "pixels_per_thread": self.pixels_in_y_thread,
+                "nr_projs_global": nr_projs,
+                "volume_axes": self._vol_axs,
+                "projection_axes": self._proj_axs,
+            },
+        )
 
-    def __call__(self, volume_texture: cp.cuda.texture.TextureObject,
-                 projection_geometry: Sequence,
-                 volume_geometry: VolumeGeometry, projections):
+    def __call__(
+        self,
+        volume_texture: cp.cuda.texture.TextureObject,
+        projection_geometry: Sequence,
+        volume_geometry: VolumeGeometry,
+        projections,
+    ):
         """Forward projection with conebeam geometry.
 
         Parameters
@@ -98,8 +110,7 @@ class RayDrivenConeFP(BaseKernel):
             according to the `projection_axes` specified in the constructor.
         """
         if isinstance(projection_geometry, list):
-            projection_geometry = GeometrySequence.fromList(
-                projection_geometry)
+            projection_geometry = GeometrySequence.fromList(projection_geometry)
         else:
             projection_geometry = copy.deepcopy(projection_geometry)
 
@@ -118,31 +129,35 @@ class RayDrivenConeFP(BaseKernel):
                 err = "detector columns"
             if len(projections) != len_dim_0:
                 raise ValueError(
-                    f"The length of projection array must match the number of "
+                    "The length of projection array must match the number of "
                     f" {err} in the projection geometry, as the first axis of "
-                    f" `projection_axes`. However, "
-                    f"{self._proj_axs[0]}, is used for the projection angle.")
+                    " `projection_axes`. However, "
+                    f"{self._proj_axs[0]}, is used for the projection angle."
+                )
 
             # TODO(Adriaan): Checking other axes is hard, because looping the
             #                projections and validating the row/column shapes
             #                is not efficient.
             for arr in projections:  # regardless of axes format used
-                if not arr.flags['C_CONTIGUOUS']:
+                if not arr.flags["C_CONTIGUOUS"]:
                     raise ValueError(
                         f"Projection data must be C-contiguous, but got "
-                        f"non-contiguous array.")
+                        f"non-contiguous array."
+                    )
                 if not isinstance(arr, cp.ndarray):
                     raise TypeError(
-                        f"Projection data must be of type `cupy.ndarray`, but "
-                        f"got {type(arr)}.")
+                        "Projection data must be of type `cupy.ndarray`, but "
+                        f"got {type(arr)}."
+                    )
                 if arr.dtype not in self.SUPPORTED_DTYPES:
                     raise NotImplementedError(
-                        f"Currently there is only support for dtypes "
-                        f"{self.SUPPORTED_DTYPES}, but got {arr.dtype}.")
+                        "Currently there is only support for dtypes "
+                        f"{self.SUPPORTED_DTYPES}, but got {arr.dtype}."
+                    )
 
         normalize_(projection_geometry, volume_geometry)
 
-        if not hasattr(self, '_module'):
+        if not hasattr(self, "_module"):
             self._module = self.compile(len(projection_geometry))
         funcs = [self._module.get_function(n) for n in self._get_names()]
         self._upload_geometries(projection_geometry, self._module)
@@ -159,23 +174,37 @@ class RayDrivenConeFP(BaseKernel):
                 funcs[axis](
                     (blocks_x, blocks_y, stop - start),  # grid
                     (self.pixels_in_x_block,),  # threads
-                    (volume_texture,
-                     projections,
-                     i,  # start slice
-                     start,  # projection
-                     *volume_shape,
-                     len(projection_geometry), rows, cols,
-                     *cp.float32(output_scale[axis])))
+                    (
+                        volume_texture,
+                        projections,
+                        i,  # start slice
+                        start,  # projection
+                        *volume_shape,
+                        len(projection_geometry),
+                        rows,
+                        cols,
+                        *cp.float32(output_scale[axis]),
+                    ),
+                )
 
         # directions of ray for each projection (a number: 0, 1, 2)
         if projection_geometry.xp == np:
-            geom_axis = np.argmax(np.abs(
-                projection_geometry.source_position - projection_geometry.detector_position),
-                axis=1)
+            geom_axis = np.argmax(
+                np.abs(
+                    projection_geometry.source_position
+                    - projection_geometry.detector_position
+                ),
+                axis=1,
+            )
         elif projection_geometry.xp == cp:
-            geom_axis = cp.argmax(cp.abs(
-                projection_geometry.source_position - projection_geometry.detector_position),
-                axis=1, dtype=cp.int32).get()
+            geom_axis = cp.argmax(
+                cp.abs(
+                    projection_geometry.source_position
+                    - projection_geometry.detector_position
+                ),
+                axis=1,
+                dtype=cp.int32,
+            ).get()
         else:
             raise Exception("Unknown array module type of geometry.")
 
@@ -204,7 +233,7 @@ class RayDrivenConeFP(BaseKernel):
             z = [(v[0] / v[2]) ** 2, (v[1] / v[2]) ** 2, v[0] * v[2]]
             output_scale = [x, y, z]
         else:  # cube is almost the same for all directions, thus * 3
-            output_scale = [[1., 1., v[0]]] * 3
+            output_scale = [[1.0, 1.0, v[0]]] * 3
 
         return output_scale
 
@@ -215,23 +244,21 @@ class RayDrivenConeFP(BaseKernel):
         xp = geometries.xp
         src = xp.ascontiguousarray(geometries.source_position.T)
         ext_min = xp.ascontiguousarray(geometries.detector_extent_min.T)
-        u = xp.ascontiguousarray(
-            geometries.u.T * geometries.detector.pixel_width)
-        v = xp.ascontiguousarray(
-            geometries.v.T * geometries.detector.pixel_height)
+        u = xp.ascontiguousarray(geometries.u.T * geometries.detector.pixel_width)
+        v = xp.ascontiguousarray(geometries.v.T * geometries.detector.pixel_height)
         srcsX, srcsY, srcsZ = src[0], src[1], src[2]
         detsSX, detsSY, detsSZ = ext_min[0], ext_min[1], ext_min[2]
         dUX, dUY, dUZ = u[0], u[1], u[2]
         dVX, dVY, dVZ = v[0], v[1], v[2]
-        copy_to_symbol(module, 'srcsX', srcsX)
-        copy_to_symbol(module, 'srcsY', srcsY)
-        copy_to_symbol(module, 'srcsZ', srcsZ)
-        copy_to_symbol(module, 'detsSX', detsSX)
-        copy_to_symbol(module, 'detsSY', detsSY)
-        copy_to_symbol(module, 'detsSZ', detsSZ)
-        copy_to_symbol(module, 'detsUX', dUX)
-        copy_to_symbol(module, 'detsUY', dUY)
-        copy_to_symbol(module, 'detsUZ', dUZ)
-        copy_to_symbol(module, 'detsVX', dVX)
-        copy_to_symbol(module, 'detsVY', dVY)
-        copy_to_symbol(module, 'detsVZ', dVZ)
+        copy_to_symbol(module, "srcsX", srcsX)
+        copy_to_symbol(module, "srcsY", srcsY)
+        copy_to_symbol(module, "srcsZ", srcsZ)
+        copy_to_symbol(module, "detsSX", detsSX)
+        copy_to_symbol(module, "detsSY", detsSY)
+        copy_to_symbol(module, "detsSZ", detsSZ)
+        copy_to_symbol(module, "detsUX", dUX)
+        copy_to_symbol(module, "detsUY", dUY)
+        copy_to_symbol(module, "detsUZ", dUZ)
+        copy_to_symbol(module, "detsVX", dVX)
+        copy_to_symbol(module, "detsVY", dVY)
+        copy_to_symbol(module, "detsVZ", dVZ)
