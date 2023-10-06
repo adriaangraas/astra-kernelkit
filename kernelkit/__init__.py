@@ -8,3 +8,6 @@ from .geom.proj import *
 from .geom.vol import *
 from . import kernel
 from . import kernels
+from . import experimental
+from . import processing
+from . import toolbox_support

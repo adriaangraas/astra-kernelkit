@@ -33,12 +33,12 @@ IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 """
 from functools import lru_cache
-from typing import List
+
 import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy.geom.proj import ProjectionGeometry
+from kernelkit.geom.proj import ProjectionGeometry
 
 
 @lru_cache
@@ -145,7 +145,7 @@ def _ramlak_filter_fourier(projections: cp.ndarray, verbose=False):
 
 def preweight(projections: cp.ndarray,
               geoms: list[ProjectionGeometry],
-              detector_piercings: List = None,
+              detector_piercings: list = None,
               verbose: bool = False):
     """Pixelwise rescaling to compensate for ray length in conebeam images
 

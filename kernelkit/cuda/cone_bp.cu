@@ -108,6 +108,9 @@ __global__ void cone_bp(
                 {{ ax[projection_axes[1]] }},
                 {{ ax[projection_axes[0]] }});
 {% else %}
+            float val=0.;
+            printf("Implementation error: unknown texture type '{{ texture }}'.\n");
+            return;
 {% endif %}
             Z[i] += r * r * val;
             numU += nU.z;

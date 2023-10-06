@@ -1,10 +1,8 @@
-import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from importlib import resources
 from typing import Sequence
 
-import astrapy as ap
 import cupy as cp
 import cupy.cuda.texture as txt
 import jinja2
@@ -13,6 +11,8 @@ from cupy.cuda.runtime import (
     cudaAddressModeBorder, cudaChannelFormatKindFloat, cudaFilterModeLinear,
     cudaReadModeElementType, cudaResourceTypeArray,
     cudaResourceTypePitch2D)
+
+from kernelkit.data import ispitched
 
 _texture_desc_2d = txt.TextureDescriptor(
     [cudaAddressModeBorder] * 2,  # array.ndim,
@@ -26,8 +26,17 @@ _channel_desc = txt.ChannelFormatDescriptor(
     32, 0, 0, 0, cudaChannelFormatKindFloat)
 
 
-def copy_to_texture(array: cp.ndarray,
-                    type: str = 'array',
+class KernelNotCompiledException(Exception):
+    """Exception raised when a kernel is called before it has been compiled."""
+    pass
+
+
+class KernelMemoryUnpreparedException(Exception):
+    """Raised when a kernel is called before memory has been prepared."""
+    pass
+
+
+def copy_to_texture(array: cp.ndarray, texture_type: str = 'array',
                     layered: bool = False) -> txt.TextureObject:
     """Creates a single-channel 2D/3D texture object of type float
     from a CuPy array.
@@ -35,27 +44,38 @@ def copy_to_texture(array: cp.ndarray,
     Parameters
     ----------
     array : cupy.ndarray
-        Array to be copied to texture. Must be pitched when `type` is
+        Array to be used in the texture. Must be pitched when `type` is
         'pitch2d'.
-    type : str, optional
+    texture_type : str, optional
         Type of texture to be created. Can be 'array' or 'pitch2d'.
         Defaults to 'array'. An 'array' texture may be faster, but requires
         the array to be copied to a CUDA array first, which increases memory
         usage.
     layered : bool, optional
         Whether to create a layered texture. Defaults to False. Only valid
-        for 3D textures.
+        for 3D texture.
 
     Returns
     -------
     cupy.cuda.texture.TextureObject
         Texture object.
     """
-    if type.lower() == 'array' or type.lower() == 'array2d':
-        assert (array.ndim == 2 and type.lower() == 'array2d'
-                or array.ndim == 3 and type.lower() == 'array'), (
-            f"Type '{type}' is not compatible with array of ndim {array.ndim}."
-        )
+    if not (isinstance(array, cp.ndarray) or isinstance(array, np.ndarray)):
+        raise TypeError(f"Expected a NumPy or CuPy array, "
+                        f"got {type(array)} instead.")
+
+    if not array.flags['C_CONTIGUOUS']:
+        raise ValueError("Array must be C-contiguous.")
+
+    if not array.dtype == cp.float32:
+        raise ValueError(f"Array must be of type float32, "
+                         f"got {array.dtype} instead.")
+
+    if texture_type.lower() == 'array' or texture_type.lower() == 'array2d':
+        assert (array.ndim == 2 and texture_type.lower() == 'array2d'
+                or array.ndim == 3 and texture_type.lower() == 'array'), (
+            f"Type '{texture_type}' is not compatible "
+            f"with array of ndim {array.ndim}.")
         assert layered and array.ndim == 3 or not layered
         # TODO: CUDAarray memory allocation is not performed by CuPy memory
         #       management, and may cause a memory overflow.
@@ -65,11 +85,11 @@ def copy_to_texture(array: cp.ndarray,
         resource_desc = txt.ResourceDescriptor(
             cudaResourceTypeArray, cuArr=cuda_array)
         return txt.TextureObject(resource_desc, _texture_desc_3d)
-    elif type.lower() == 'pitch2d':
+    elif texture_type.lower() == 'pitch2d':
         assert array.ndim == 2
         array_base = array.base if array.base is not None else array
         assert array_base.ndim == 2
-        if not ap.ispitched(array_base):
+        if not ispitched(array_base):
             raise ValueError(
                 "Array data `array.base` needs to have pitched "
                 "dimensions. Use `aspitched(array)`.")
@@ -79,7 +99,7 @@ def copy_to_texture(array: cp.ndarray,
             pitchInBytes=array_base.shape[1] * array.dtype.itemsize)
         return txt.TextureObject(resource_desc, _texture_desc_2d)
     else:
-        raise ValueError(f"Type `{type}` not understood.")
+        raise ValueError(f"Type `{texture_type}` not understood.")
 
 
 def copy_to_symbol(module: cp.RawModule, name: str, array):
@@ -98,19 +118,21 @@ def copy_to_symbol(module: cp.RawModule, name: str, array):
         Array to copy to the symbol
     """
     import ctypes
+    array = np.squeeze(array)
+    assert array.flags['C_CONTIGUOUS']
+    assert array.dtype == np.float32
     p = module.get_global(name)
-    # if cp.get_array_module(array) == np:
-    #     array = np.squeeze(array)
-    #     assert array.flags['C_CONTIGUOUS']
-    #     assert array.dtype == np.float32
-    #     p.copy_from_async(array.ctypes.data_as(ctypes.c_void_p), array.nbytes)
-    # else:
-    p.copy_from_async(array.base.data, array.base.nbytes)
+    # a_cpu = np.ascontiguousarray(np.squeeze(array), dtype=dtype)
+    if cp.get_array_module(array) == np:
+        p.copy_from_async(array.ctypes.data_as(ctypes.c_void_p), array.nbytes)
+    else:
+        p.copy_from_async(array.data, array.nbytes)
 
 
 @dataclass(frozen=True, order=True)
 class cuda_float4:
     """Helper to encode CUDA float4 in the right order"""
+
     x: int
     y: int
     z: int
@@ -123,14 +145,14 @@ class cuda_float4:
         return str(self.to_list())
 
 
-class Kernel(ABC):
+class BaseKernel(ABC):
     """Abstract base class for CUDA kernels"""
 
     FLOAT_DTYPE = cp.float32
     SUPPORTED_DTYPES = [cp.float32]
 
     @abstractmethod
-    def __init__(self, resource: str, package='astrapy.cuda'):
+    def __init__(self, resource: str, package='kernelkit.cuda'):
         """Initialize the kernel
 
         Parameters
@@ -156,7 +178,8 @@ class Kernel(ABC):
         """Returns the CUDA source code of the kernel"""
         return self._cuda_source
 
-    def _compile(self, name_expressions: Sequence[str], template_kwargs: dict) -> cp.RawModule:
+    def _compile(self, name_expressions: Sequence[str],
+                 template_kwargs: dict) -> cp.RawModule:
         """Renders Jinja2 template and imports kernel in CuPy
 
         Parameters
@@ -167,9 +190,12 @@ class Kernel(ABC):
             Dictionary of template arguments to be rendered in the source code
             using Jinja2
         """
-        print(f"Compiling kernel {self.__class__.__name__}"
-              f" with arguments {template_kwargs}"
-              f"...")
+        if len(template_kwargs) == 0:
+            print(f"Compiling kernel {self.__class__.__name__}...")
+        else:
+            print(f"Compiling kernel {self.__class__.__name__}"
+                  f" with arguments {template_kwargs}"
+                  f"...")
         self._compiled_template_kwargs = template_kwargs
         code = jinja2.Template(
             self.cuda_source,

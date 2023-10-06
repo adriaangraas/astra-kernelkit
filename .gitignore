@@ -1,3 +1,7 @@
 /.idea
 *.pyc
-/paper/*
+/*.egg-info
+/paper
+/dist
+/docs/_*
+/docs/*/_autosummary

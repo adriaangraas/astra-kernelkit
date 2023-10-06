@@ -1,27 +1,31 @@
 from abc import ABC
-from typing import List
 
 import astra
 import astra.experimental
 import cupy as cp
 import numpy as np
 
-from kernelkit.projector import BaseProjector
+from kernelkit.projector import BaseProjector, ProjectionGeometryNotSetError, \
+    ProjectionsNotSetError, VolumeGeometryNotSetError, VolumeNotSetError
 from kernelkit.geom.proj import ProjectionGeometry
 from kernelkit.geom.vol import VolumeGeometry
 
 
-def _geom2astra(g):
-    c = lambda x: (x[1], x[0], x[2])
-    d = lambda x: np.array((x[1], x[0], x[2])) * g.detector.pixel_width
-    e = lambda x: np.array((x[1], x[0], x[2])) * g.detector.pixel_height
-    return [*c(g.source_position), *c(g.detector_position), *d(g.u), *e(g.v)]
+def _geom2astra(g: ProjectionGeometry) -> list[float]:
+    """Convert a `kernelkit.ProjectionGeometry` to an ASTRA Toolbox vector."""
+
+    def swp(x):
+        return np.array((x[1], x[0], x[2]))
+
+    return [*swp(g.source_position), *swp(g.detector_position),
+            *(swp(g.u) * g.detector.pixel_width),
+            *(swp(g.v) * g.detector.pixel_height)]
 
 
 class BaseProjectorAdapter(BaseProjector, ABC):
     """Base class for ASTRA projectors."""
 
-    __slots__ = ('_volume', '_projections', '_vol_geom', '_proj_geom')
+    __slots__ = '_volume', '_projections', '_vol_geom', '_proj_geom'
 
     def __init__(self):
         """Base class for ASTRA projectors."""
@@ -83,20 +87,21 @@ class BaseProjectorAdapter(BaseProjector, ABC):
         try:
             return self._projections
         except AttributeError:
-            raise AttributeError("No projections have been set yet.")
+            raise ProjectionsNotSetError(
+                "Projections must be set before accessing them.")
 
     @projections.setter
     def projections(self, value: cp.ndarray):
         """The projections onto which to project."""
-        assert value.dtype == cp.float32
-        assert value.flags.c_contiguous
+        if not isinstance(value, cp.ndarray):
+            raise TypeError("Projections must be a CuPy array.")
 
         if hasattr(self, 'projection_geometry'):
             expected_shape = (self.projection_geometry[0].detector.rows,
                               len(self.projection_geometry),
                               self.projection_geometry[0].detector.cols)
             if value.shape != expected_shape:
-                raise ValueError(f"Projection shape does not match projection"
+                raise ValueError(f"Shape does not match projection"
                                  f" geometry. Got {value.shape}, "
                                  f" expected {expected_shape}.")
 
@@ -111,8 +116,7 @@ class BaseProjectorAdapter(BaseProjector, ABC):
     def projections(self):
         """Delete the projections and clean up ASTRA projector."""
         del self._projections
-        del self._astra_proj_link  # TODO: does this delete?
-        del self._astra_projector_id
+        del self._astra_proj_link
 
     @property
     def projection_axes(self):
@@ -165,19 +169,23 @@ class BaseProjectorAdapter(BaseProjector, ABC):
         return self._proj_geom
 
     @projection_geometry.setter
-    def projection_geometry(self, value: List[ProjectionGeometry]):
+    def projection_geometry(self, value: list[ProjectionGeometry]):
         try:
             del self.projection_geometry  # invalidate projector
         except AttributeError:
             pass
 
+        for p in value:
+            if p.beam != ProjectionGeometry.Beam.CONE.value:
+                raise NotImplementedError("Only conebeam geometries are "
+                                          "supported at the moment.")
         if hasattr(self, 'projections'):
             if self.projections.shape[1] != len(value):
                 raise ValueError("Number of projections does not match"
                                  " projection geometry.")
             if (self.projections.shape[0] != value[0].detector.rows
                 or self.projections.shape[2] != value[0].detector.cols):
-                raise ValueError("Projection shape does not match projection"
+                raise ValueError("Shape does not match projection"
                                  " geometry shape.")
 
         self._proj_geom = value
@@ -190,33 +198,31 @@ class BaseProjectorAdapter(BaseProjector, ABC):
     @projection_geometry.deleter
     def projection_geometry(self):
         del self._proj_geom
-        del self._astra_proj_geom  # TODO: does this delete?
+        del self._astra_proj_geom
         try:
             del self._astra_projector_id  # could not be generated/valid
         except AttributeError:
             pass
 
     @staticmethod
-    def _geoms2vectors(geoms: List[ProjectionGeometry]):
+    def _geoms2vectors(geoms: list[ProjectionGeometry]):
         """Convert a list of geometries to ASTRA vectors."""
-
-        # vectors = np.zeros((len(geoms), 12))
-        # for i, g in enumerate(geoms):
-        #     vectors[i] = _geom2astra(g)
-        # return vectors
         return np.array([_geom2astra(g) for g in geoms])
 
     def projector3d(self):
+        """Create an ASTRA Toolbox projector3d object."""
         if not hasattr(self, '_astra_projector_id'):
-            if self._astra_proj_geom is None:
-                raise RuntimeError("Projection geometries must be given before"
-                                   " creating a projector. Use the "
-                                   "`projection_geometry` setter of this"
-                                   " class.")
-            if self._astra_vol_geom is None:
-                raise RuntimeError("`VolumeGeometry` must be given before "
-                                   "creating a projector. Use the "
-                                   "`volume_geometry` setter of this class")
+            if not hasattr(self, '_astra_proj_geom'):
+                raise ProjectionGeometryNotSetError(
+                    "Projection geometries must be given before"
+                    " creating a projector. Use the "
+                    "`projection_geometry` setter of this"
+                    " class.")
+            if not hasattr(self, '_astra_vol_geom'):
+                raise VolumeGeometryNotSetError(
+                    "`VolumeGeometry` must be given before "
+                    "creating a projector. Use the "
+                    "`volume_geometry` setter of this class")
             proj_cfg = {'type': 'cuda3d',
                         'VolumeGeometry': self._astra_vol_geom,
                         'ProjectionGeometry': self._astra_proj_geom,
@@ -224,28 +230,77 @@ class BaseProjectorAdapter(BaseProjector, ABC):
             self._astra_projector_id = astra.projector3d.create(proj_cfg)
         return self._astra_projector_id
 
+    def directFPBP(self, mode, additive=False):
+        """Perform ASTRA Toolbox forward or backprojection.
 
-class ConeProjectorAdapter(BaseProjectorAdapter):
-    def __call__(self, additive=False):
-        assert hasattr(self, '_astra_vol_link')
-        assert hasattr(self, '_astra_proj_link')
+        Parameters
+        ----------
+        mode : str
+            Either 'FP' or 'BP'.
+        additive : bool, optional
+            Whether to perform an additive or a replacement projection.
+            Defaults to False.
+
+        Returns
+        -------
+        array-like
+            The projections if `mode` is 'FP', or the volume if `mode` is 'BP'.
+        """
+        if not hasattr(self, '_astra_vol_link'):
+            raise VolumeNotSetError("Volume must be set before performing a "
+                                    "forward or backprojection.")
+        if not hasattr(self, '_astra_proj_link'):
+            raise ProjectionsNotSetError("Projections must be set before "
+                                         "performing a forward or "
+                                         "backprojection.")
+
+        if not mode.upper() in ('FP', 'BP'):
+            raise ValueError("Mode must be either 'FP' or 'BP'.")
+
         astra.experimental.direct_FPBP3D(
             self.projector3d(),
             self._astra_vol_link,
             self._astra_proj_link,
             int(not additive),
-            "FP")
-        return self._projections
+            mode.upper())
+        return self._projections if mode == 'FP' else self._volume
 
 
-class ConeBackprojectorAdapter(BaseProjectorAdapter):
+class ForwardProjectorAdapter(BaseProjectorAdapter):
+    """Adapter for ASTRA forward projectors."""
+
     def __call__(self, additive=False):
-        assert hasattr(self, '_astra_vol_link')
-        assert hasattr(self, '_astra_proj_link')
-        astra.experimental.direct_FPBP3D(
-            self.projector3d(),
-            self._astra_vol_link,
-            self._astra_proj_link,
-            int(not additive),
-            "BP")
-        return self._volume
+        """Perform ASTRA Toolbox forward projection.
+
+        Parameters
+        ----------
+        additive : bool, optional
+            Whether to perform an additive or a replacement projection.
+            Defaults to False.
+
+        Returns
+        -------
+        array-like
+            The projections.
+        """
+        super().directFPBP("FP", additive=additive)
+
+
+class BackprojectorAdapter(BaseProjectorAdapter):
+    """Adapter for ASTRA backprojectors."""
+
+    def __call__(self, additive=False):
+        """Perform ASTRA Toolbox backprojection.
+
+        Parameters
+        ----------
+        additive : bool, optional
+            Whether to perform an additive or a replacement projection.
+            Defaults to False.
+
+        Returns
+        -------
+        array-like
+            The volume.
+        """
+        super().directFPBP("BP", additive=additive)

@@ -1,21 +1,51 @@
 import copy
-import warnings
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Sequence
+from typing import Sequence
+
 import numpy as np
 import transforms3d
 
+ANGLES_CONVENTION = "sxyz"  # using the transforms3d specification
 
-class Beam(Enum):
-    """Beam type."""
-    CONE = 'cone'
-    PARALLEL = 'parallel'
+
+def angles2mat(r, p, y) -> np.ndarray:
+    """Convert roll, pitch, yaw angles to a rotation matrix.
+
+    Parameters
+    ----------
+    r : float
+        Roll angle in radians.
+    p : float
+        Pitch angle in radians.
+    y : float
+        Yaw angle in radians.
+
+    Returns
+    -------
+    np.ndarray
+        Rotation matrix.
+    """
+    return transforms3d.euler.euler2mat(r, p, y, ANGLES_CONVENTION)
 
 
 @dataclass
 class Detector:
-    """Detector geometry."""
+    """Detector specifications.
+
+    Parameters
+    ----------
+    rows : int
+        Number of rows in the detector.
+    cols : int
+        Number of columns in the detector.
+    pixel_height : float
+        Height of a single pixel.
+    pixel_width : float
+        Width of a single pixel.
+    """
+
+    __slots__ = ['rows', 'cols', 'pixel_height', 'pixel_width']
 
     rows: int
     cols: int
@@ -23,82 +53,101 @@ class Detector:
     pixel_width: float
 
     @property
+    def shape(self):
+        return self.rows, self.cols
+
+    @property
     def width(self):
+        """Width of the detector."""
         return self.pixel_width * self.cols
 
     @property
     def height(self):
+        """Height of the detector."""
         return self.pixel_height * self.rows
 
     @property
     def pixel_volume(self):
+        """Volume of a single detector pixel."""
         return self.pixel_width * self.pixel_height
 
+    __dict__ = {}
 
 class ProjectionGeometry:
-    """Geometry of a single projection."""
-    ANGLES_CONVENTION = "sxyz"
+    """Single 3D projection with one source and one detector."""
+
+    xp = np  # using CuPy is possible, but not tested
+
+    class Beam(Enum):
+        """Beam type."""
+
+        CONE = 'cone'
+        PARALLEL = 'parallel'
 
     def __init__(self,
-                 source_position: Sequence,
-                 detector_position: Sequence,
-                 u_unit: Sequence,
-                 v_unit: Sequence,
+                 source_position,
+                 detector_position,
                  detector: Detector,
-                 beam: str = Beam.CONE):
+                 u: Sequence = (0., 1., 0.),
+                 v: Sequence = (0., 0., 1.),
+                 beam: Beam | str = Beam.CONE,
+                 array_module=None):
         """Initialize a projection geometry.
 
         Parameters
         ----------
-        source_position : Sequence
+        source_position : array-like
             Position of the source in the world frame.
-        detector_position : Sequence
-            Position of the detector in the world frame.
-        u_unit : Sequence
+        detector_position : array-like
+            Position of the detector in the world frame. The detector is
+            assumed to be centered around the detector position.
+        detector : kernelkit.geom.Detector
+            Detector object.
+        u: Sequence
             Vector pointing in the horizontal direction of the detector of
             length 1.
-        v_unit : Sequence
+        v: Sequence
             Vector pointing in the vertical direction of the detector of
             length 1.
-        detector : Detector
-            Detector object, see :class:`astrapy.geom.Detector`.
         beam : str
             Beam type, either 'cone' or 'parallel'.
-        """
-        self.source_position = np.array(source_position)
-        self.detector_position = np.array(detector_position)
-        self.detector = detector
-        self.u = np.array(u_unit)
-        self.v = np.array(v_unit)
 
-        if beam not in Beam:
-            raise ValueError(f"Beam type must be one of {Beam}.")
-        self.beam = beam
+        Notes
+        -----
+        The axes conventions always follow the coordinates (x, y, z) in world
+        space, where x and y are horizontal, and z is vertical. The detector
+        u vector is horizontal and the v vector is vertical.
+        """
+        if array_module is not None:
+            self.xp = array_module
+        self.source_position = self.xp.array(source_position,
+                                             dtype=self.xp.float32)
+        self.detector_position = self.xp.array(detector_position,
+                                               dtype=self.xp.float32)
+        self.detector = detector
+        self.u = self.xp.array(u, dtype=self.xp.float32)
+        self.v = self.xp.array(v, dtype=self.xp.float32)
+        if beam not in self.Beam:
+            raise ValueError(f"Beam type must be one of {self.Beam}, "
+                             "got {beam}.")
+        self.beam = beam.value
 
     @property
     def detector_extent_min(self):
         """Minimum extent of the detector in the world frame.
-        The detector is assumed to be centered around the detector position."""
+
+        Notes
+        -----
+        The detector is assumed to be centered around the detector position.
+        """
         return (self.detector_position
                 - self.v * self.detector.height / 2
                 - self.u * self.detector.width / 2)
 
-    @staticmethod
-    def angles2mat(r, p, y) -> np.ndarray:
-        """Convert roll, pitch, yaw angles to a rotation matrix."""
-        return transforms3d.euler.euler2mat(
-            r, p, y, ProjectionGeometry.ANGLES_CONVENTION)
-
-    @staticmethod
-    def mat2angles(mat) -> float:
-        """Convert a rotation matrix to roll, pitch, yaw angles."""
-        return transforms3d.euler.mat2euler(
-            mat, ProjectionGeometry.ANGLES_CONVENTION)
-
     @property
     def u(self):
         """Horizontal u-vector in the detector frame of unit length."""
-        return self.__u
+        return self._u
 
     @u.setter
     def u(self, value):
@@ -109,19 +158,21 @@ class ProjectionGeometry:
         value : array-like
             The horizontal u-vector in the detector frame. Must be a unit
             vector."""
-        if not np.allclose(np.linalg.norm(value), 1.):
-            raise ValueError("`u` must be a unit vector.")
-        self.__u = value
+        if not self.xp.allclose(np.linalg.norm(value), 1.):
+            raise ValueError("`u` must be a unit vector to avoid ambiguity.")
+        if self.xp.allclose(value, 0.):
+            raise ValueError("`u` must not be zero.")
+        # TODO(Adriaan): can only be checked when u, v are set at the same
+        #  time
+        # if hasattr(self, '_v'):
+        #     if not self.xp.allclose(self.xp.dot(value, self.v), 0.):
+        #         raise ValueError("`u` and `v` must be orthogonal.")
+        self._u = value
 
     @property
     def v(self):
-        """Vertical v-vector in the detector frame of unit length.
-
-        Returns
-        -------
-        array-like
-        """
-        return self.__v
+        """Vertical v-vector in the detector frame of unit length."""
+        return self._v
 
     @v.setter
     def v(self, value):
@@ -132,20 +183,43 @@ class ProjectionGeometry:
         value : array-like
             The vertical v-vector in the detector frame. Must be a unit
             vector."""
-        if not np.allclose(np.linalg.norm(value), 1.):
+        if not self.xp.allclose(np.linalg.norm(value), 1.):
             raise ValueError("`v` must be a unit vector.")
-        self.__v = value
+        if self.xp.allclose(value, 0.):
+            raise ValueError("`v` must not be zero.")
+        # TODO(Adriaan): can only be checked when u, v are set at the same
+        #  time
+        # if hasattr(self, '_u'):
+        #     if not self.xp.allclose(self.xp.dot(value, self.u), 0.):
+        #         raise ValueError("`u` and `v` must be orthogonal.")
+        self._v = value
+
+    def __deepcopy__(self, memodict={}):
+        obj = self.__class__(
+            source_position=self.xp.copy(self.source_position),
+            detector_position=self.xp.copy(self.detector_position),
+            u=self.xp.copy(self.u),
+            v=self.xp.copy(self.v),
+            detector=Detector(
+                rows=self.detector.rows,
+                cols=self.detector.cols,
+                pixel_width=self.detector.pixel_width,
+                pixel_height=self.detector.pixel_height,
+            ),
+            array_module=self.xp
+        )
+        return obj
 
     def __str__(self):
         return (f"Source {self.source_position} "
-                f"Detector {self.detector_position}"
-                f"U {self.u}"
-                f"V {self.v}")
+                f"Detector {self.detector_position} "
+                f"Horizontal vector: {self.u} "
+                f"Vertical vector: {self.v} ")
 
 
 @dataclass
 class GeometrySequence:
-    """Structure-of-arrays geometry data object
+    """Structure-of-arrays geometry data object.
 
     Parameters
     ----------
@@ -166,7 +240,7 @@ class GeometrySequence:
 
     @dataclass
     class DetectorSequence:
-        """Structure-of-arrays detector data object
+        """Structure-of-arrays detector data object.
 
         Parameters
         ----------
@@ -221,12 +295,12 @@ class GeometrySequence:
                 - self.u * self.detector.width[..., self.xp.newaxis] / 2)
 
     @classmethod
-    def fromList(cls, geometries: List[ProjectionGeometry], xp=None):
+    def fromList(cls, geometries: list[ProjectionGeometry], xp=None):
         """Create a GeometrySequence from a list of ProjectionGeometry objects.
 
         Parameters
         ----------
-        geometries : List[ProjectionGeometry]
+        geometries : list[ProjectionGeometry]
             A list of ProjectionGeometry objects.
         xp : array-like, optional
             The array library to use. If None, it defaults to numpy.
@@ -299,13 +373,13 @@ class GeometrySequence:
 
 
 def shift(geom: ProjectionGeometry,
-          shift_vector: np.ndarray) -> ProjectionGeometry:
-    """Creates a new geometry by shifting an existing one in 3D space
+          vector: np.ndarray) -> ProjectionGeometry:
+    """Creates a new geometry by a 3D shift.
 
     Parameters
     ----------
     geom: ProjectionGeometry or GeometrySequence
-    shift_vector: numpy.ndarray, cupy.ndarray, shape (3,), or (N, 3)
+    vector: numpy.ndarray, cupy.ndarray, shape (3,), or (N, 3)
     for GeometrySequence
 
     Returns
@@ -313,92 +387,93 @@ def shift(geom: ProjectionGeometry,
     New `ProjectionGeometry` or `GeometrySequence`
     """
     geom = copy.deepcopy(geom)
-    geom.source_position += shift_vector
-    geom.detector_position += shift_vector
+    geom.source_position += vector
+    geom.detector_position += vector
     return geom
 
 
-def shift_(geom: ProjectionGeometry, shift_vector: np.ndarray) -> None:
-    """In-place shift of a geometry or geometry sequence
+def shift_(geom: ProjectionGeometry, vector: np.ndarray) -> None:
+    """In-place shift of a geometry or geometry sequence.
 
     Parameters
     ----------
     geom: ProjectionGeometry or GeometrySequence
-    shift_vector: numpy.ndarray, cupy.ndarray, shape (3,), or (N, 3)
+    vector: numpy.ndarray, cupy.ndarray, shape (3,), or (N, 3)
     for GeometrySequence
     """
-    geom.source_position += shift_vector
-    geom.detector_position += shift_vector
+    geom.source_position += vector
+    geom.detector_position += vector
 
 
-def scale(geom: ProjectionGeometry, scaling: np.ndarray) -> ProjectionGeometry:
-    """Creates a new geometry by scaling an existing one
+def scale(geom: ProjectionGeometry, factor: np.ndarray) -> ProjectionGeometry:
+    """Creates a new projection geometry by factor.
 
     Parameters
     ----------
-    geom : ProjectionGeometry or GeometrySequence
-    scaling : numpy.ndarray, cupy.ndarray, shape (3,), or (N, 3)
-    for GeometrySequence
+    geom : ProjectionGeometry
+        Projection geometry or geometry sequence.
+    factor : float
+        Factor by which to enlarge or shrink the geometry.
 
     Returns
     -------
-    New `ProjectionGeometry` or `GeometrySequence`
+    New `ProjectionGeometry`
     """
-
     geom = copy.deepcopy(geom)
+
     # detector pixels have to be scaled first, because
     # detector.width and detector.height need to be scaled accordingly
-    horiz_pixel_vector = (geom.u * geom.detector.pixel_width) / scaling
+    horiz_pixel_vector = (geom.u * geom.detector.pixel_width) / factor
     new_pixel_width = np.linalg.norm(horiz_pixel_vector)
     new_u_unit = horiz_pixel_vector / new_pixel_width
     geom.detector.pixel_width = new_pixel_width
     geom.u = new_u_unit
 
-    vert_pixel_vector = (geom.v * geom.detector.pixel_height) / scaling
+    vert_pixel_vector = (geom.v * geom.detector.pixel_height) / factor
     new_pixel_height = np.linalg.norm(vert_pixel_vector)
     new_v_unit = vert_pixel_vector / new_pixel_height
     geom.detector.pixel_height = new_pixel_height
     geom.v = new_v_unit
 
-    geom.source_position[:] = geom.source_position[:] / scaling
-    geom.detector_position[:] = geom.detector_position[:] / scaling
+    geom.source_position[:] = geom.source_position[:] / factor
+    geom.detector_position[:] = geom.detector_position[:] / factor
     return geom
 
 
-def scale_(geom: ProjectionGeometry, scaling: float) -> None:
-    """In-place scaling of geometry or geometry sequence
+def scale_(geom: ProjectionGeometry, factor: float) -> None:
+    """In-place factor of geometry or geometry sequence.
 
     Parameters
     ----------
     geom : ProjectionGeometry or GeometrySequence
-    scaling : float
+    factor : float
         Factor by which to enlarge or shrink the geometry
     """
     # detector pixels have to be scaled first, because
     # detector.width and detector.height need to be scaled accordingly
     xp = geom.xp
+
     pixel_vec = geom.u * geom.detector.pixel_width[..., xp.newaxis]
-    pixel_vec /= scaling
+    pixel_vec /= factor
+
     geom.detector.pixel_width = xp.linalg.norm(pixel_vec, axis=-1)
-    xp.divide(pixel_vec,
-              geom.detector.pixel_width[..., xp.newaxis],
+    xp.divide(pixel_vec, geom.detector.pixel_width[..., xp.newaxis],
               out=geom.u)
     xp.multiply(geom.v, geom.detector.pixel_height[..., xp.newaxis],
                 out=pixel_vec)
-    pixel_vec /= scaling
+    pixel_vec /= factor
+
     geom.detector.pixel_height = xp.linalg.norm(pixel_vec, axis=-1)
     xp.divide(pixel_vec,
               geom.detector.pixel_height[..., xp.newaxis],
               out=geom.v)
-    xp.divide(geom.source_position, scaling, out=geom.source_position)
-    xp.divide(geom.detector_position, scaling, out=geom.detector_position)
+    xp.divide(geom.source_position, factor, out=geom.source_position)
+    xp.divide(geom.detector_position, factor, out=geom.detector_position)
 
 
-def rotate(geom: ProjectionGeometry,
-           roll: float = 0.,
-           pitch: float = 0.,
+def rotate(geom: ProjectionGeometry, roll: float = 0., pitch: float = 0.,
            yaw: float = 0.) -> ProjectionGeometry:
-    """Creates a new geometry by rotating an existing
+    """Creates a new geometry by rotation.
 
     Parameters
     ----------
@@ -412,10 +487,11 @@ def rotate(geom: ProjectionGeometry,
 
     Returns
     -------
-    New `ProjectionGeometry` or `GeometrySequence`
+    New `ProjectionGeometry`
     """
     ngeom = copy.deepcopy(geom)
-    RT = ProjectionGeometry.angles2mat(roll, pitch, yaw).T
+
+    RT = angles2mat(roll, pitch, yaw).T
     ngeom.source_position = RT @ geom.source_position
     ngeom.detector_position = RT @ geom.detector_position
     ngeom.u = RT @ geom.u
@@ -423,9 +499,9 @@ def rotate(geom: ProjectionGeometry,
     return ngeom
 
 
-def rotate_(geom: ProjectionGeometry,
-            roll: float = 0., pitch: float = 0., yaw: float = 0.) -> None:
-    """In-place rotation of geometry
+def rotate_(geom: ProjectionGeometry, roll: float = 0., pitch: float = 0.,
+            yaw: float = 0.) -> None:
+    """In-place rotation of a geometry.
 
     Parameters
     ----------
@@ -437,7 +513,7 @@ def rotate_(geom: ProjectionGeometry,
     yaw : float
         Rotation around z-axis
     """
-    R = geom.xp.asarray(ProjectionGeometry.angles2mat(roll, pitch, yaw),
+    R = geom.xp.asarray(angles2mat(roll, pitch, yaw),
                         dtype=geom.source_position.dtype)
     geom.source_position[...] = geom.source_position @ R
     geom.detector_position[...] = geom.detector_position @ R

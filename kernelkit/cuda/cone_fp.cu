@@ -107,10 +107,7 @@ __global__ void cone_fp(
     float scale2,
     float outputScale
 ) {
-    int row;
-    int col;
-    int endRow;
-    int endCol;
+    int row, col, endRow, endCol;
     const int pixelsPerThread = {{ pixels_per_thread }};
 
     row = blockIdx.x * blockDim.x + threadIdx.x;
@@ -184,10 +181,9 @@ __global__ void cone_fp(
             // printf("row %d col %d rows %d cols %d\n %d\n ", row, col, rows, cols, val);
             {% set n = ['projs', 'rows', 'cols'] %}
             {% set i = ['proj', 'r', 'c'] %}
-            projections[{{i[projection_axes[0]]}}][
-                {{i[projection_axes[1]]}} * {{n[projection_axes[2]]}}
-                + {{i[projection_axes[2]]}}
-            ] += val * outputScale;
+            projections[{{i[projection_axes[0]]}}]
+                       [{{i[projection_axes[1]]}} * {{n[projection_axes[2]]}} + {{i[projection_axes[2]]}}]
+                += val * outputScale;
         }
     }
 }

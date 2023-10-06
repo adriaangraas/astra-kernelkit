@@ -1,32 +1,35 @@
-import collections
-from typing import Any, Callable, List, Sequence, Sized
+from typing import Any, Callable, Sequence
 
 import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-from astrapy.geom.proj import ProjectionGeometry
-from astrapy.geom.vol import VolumeGeometry
-from astrapy.kernel import Kernel
-from astrapy.kernels.cone_bp import ConeBackprojection
-from astrapy.operator import XrayTransform
-from astrapy.processing import preweight, filter as filt
-from astrapy.projector import ConeProjector, ConeBackprojector
+from kernelkit.geom.proj import ProjectionGeometry
+from kernelkit.geom.vol import VolumeGeometry
+from kernelkit.kernel import BaseKernel
+from kernelkit.kernels.cone_bp import VoxelDrivenConeBP
+from kernelkit.operator import XrayTransform
+from kernelkit.processing import preweight, filter as filt
+from kernelkit.projector import ForwardProjector, BackProjector
 
 
 def fp(volume: Any,
-       projection_geometry: Any,
-       volume_geometry: Any,
-       out: Sized = None):
-    """
-    Forward projection
+       projection_geometry: list[ProjectionGeometry],
+       volume_geometry: VolumeGeometry,
+       out=None):
+    """X-ray forward projection.
 
     Parameters
     ----------
-    volume
-    projection_geometry
-    volume_geometry
-    out
+    volume: array-like
+        The volume to project.
+    projection_geometry: list[ProjectionGeometry]
+        The projection geometries.
+    volume_geometry: VolumeGeometry
+        The volume geometry.
+    out: array-like, optional
+        The projection array to write the result to. If not given, a new
+        array is allocated on the CPU and returned.
 
     Returns
     -------
@@ -40,32 +43,39 @@ def fp(volume: Any,
 
 
 def bp(projections: Any,
-       projection_geometry: List[ProjectionGeometry],
+       projection_geometry: list[ProjectionGeometry],
        volume_geometry: VolumeGeometry,
        filter: Any = None,
        preproc_fn: Callable = None,
-       kernel: Kernel = None,
-       out: cp.ndarray = None,
+       kernel: BaseKernel = None,
+       out=None,
        projection_axes: Sequence[int] = (0, 1, 2),
        **kwargs):
-    """
-    Backprojection
+    """X-ray backprojection.
 
     Parameters
     ----------
     projections : array-like
         Either a 2D list of projections, or a 3D array of projections.
-    projection_geometry : List[ProjectionGeometry]
+    projection_geometry : list[ProjectionGeometry]
         The projection geometries.
     volume_geometry : VolumeGeometry
         The volume geometry.
     filter : Any
         The filter to apply to the projections before backprojection.
-
+    preproc_fn : Callable, optional
+        A function to apply to the projections before backprojection,
+        especially suited for pre-processing on the GPU. Default is None.
 
     Returns
     -------
+    out : ndarray
+        The volume that was backprojected into.
 
+    Warnings
+    --------
+    The API of this function will likely change in some future because of
+    the kernel passing mechanism.
     """
     if out is None:
         out = cp.zeros(volume_geometry.shape, cp.float32)
@@ -82,9 +92,10 @@ def bp(projections: Any,
         preweight(projections, projection_geometry)
         filt(projections, filter=filter)
 
+    # TODO(Adriaan): rewrite using the `XrayTransform` class
     kwargs.update(projection_axes=projection_axes)
-    ptor = ConeBackprojector(
-        ConeBackprojection(**kwargs) if kernel is None else kernel,
+    ptor = BackProjector(
+        VoxelDrivenConeBP(**kwargs) if kernel is None else kernel,
         texture_type='layered')
     ptor.projection_geometry = projection_geometry
     ptor.volume_geometry = volume_geometry
@@ -98,16 +109,51 @@ def fdk(projections: Any,
         projection_geometry: Any,
         volume_geometry: VolumeGeometry,
         filter: Any = 'ramlak',
-        preproc_fn: Callable = None,
-        **kwargs):
-    """Feldkamp-Davis-Kress algorithm"""
+        **bp_kwargs):
+    """Feldkamp-Davis-Kress algorithm for conebeam geometry.
 
+    Parameters
+    ----------
+    projections : array-like
+        The projections to reconstruct from.
+    projection_geometry : list[ProjectionGeometry]
+        The projection geometries.
+    volume_geometry : VolumeGeometry
+        The volume geometry.
+    filter : Any, optional
+        The filter to apply to the projections before backprojection. Default
+        is 'ramlak'. See `kernelkit.processing.filter` for more information.
+    bp_kwargs : dict, optional
+        Keyword arguments to pass to the `bp` function. See
+        `kernelkit.algo.bp` for more information.
+
+    See Also
+    --------
+    kernelkit.algo.bp : Backprojection function.
+
+    Notes
+    -----
+    The FDK algorithm is a special case of the `bp` function, with a
+    `VoxelDrivenConeBP` kernel and a filter. See the article by Feldkamp et
+    al. [1]_ for more information.
+
+    References
+    ----------
+    .. [1] Feldkamp, L. A., Davis, L. C., & Kress, J. W. (1984). Practical
+              cone-beam algorithm. Journal of the Optical Society of America A,
+                1(6), 612. https://doi.org/10.1364/JOSAA.1.000612
+    """
+    for p in projection_geometry:
+        if p.beam != 'cone':
+            raise NotImplementedError("Only cone beam geometry is supported "
+                                      "at the moment.")
+    if not 'kernel' in bp_kwargs:
+        bp_kwargs.update(kernel=VoxelDrivenConeBP())
     return bp(projections,
               projection_geometry,
               volume_geometry,
               filter=filter,  # just bp with a filter
-              preproc_fn=preproc_fn,
-              **kwargs)
+              **bp_kwargs)
 
 
 def sirt(projections: np.ndarray,
@@ -121,44 +167,75 @@ def sirt(projections: np.ndarray,
          min_constraint: float = None,
          max_constraint: float = None,
          return_gpu: bool = False,
-         algo='gpu',
-         callback: callable = None):
-    """Simulateneous Iterative Reconstruction Technique
+         callback: callable = None,
+         residual_every: int=10,
+         stream=None):
+    """Simultaneous Iterative Reconstruction Technique.
+
+    Parameters
+    ----------
+    projections : array-like
+        The projections to reconstruct from. Must follow axes dimensions
+         (0, 1, 2), i.e., (projections, rows, cols). Other conventions are
+         possible but not implemented here.
+    projection_geometry : list[ProjectionGeometry]
+        The projection geometries.
+    volume_geometry : VolumeGeometry
+        The volume geometry.
+    iters : int, optional
+        The number of iterations to perform. Default is 100.
+    verbose : bool, optional
+        Whether to print a progress bar. Default is True.
+    mask : array-like, optional
+        A mask to apply to the volume after each iteration. By default, no
+        mask is applied.
+    min_constraint : float, optional
+        The minimum value to clip the volume to after each iteration. By
+        default, no clipping is applied.
+    max_constraint : float, optional
+        The maximum value to clip the volume to after each iteration. By
+        default, no clipping is applied.
+    return_gpu : bool, optional
+        Whether to return the volume on the GPU. Default is False.
+    callback : callable, optional
+        A function to call after each iteration. The function should take
+        three arguments: the iteration number, the volume, and the residual.
+        Default is None.
+    residual_every : int, optional
+        How often to compute the residual. Default is 10. Note that computing
+        the residual is expensive and may slow down the reconstruction. It is
+        best to set this value conservatively.
+    stream : cupy.cuda.Stream, optional
+        The CUDA stream to use. By default, a new stream is created and used
+        until the function returns.
     """
     if len(projections) != len(projection_geometry):
         raise ValueError("Number of projections does not match number of"
                          " geometries.")
-    if algo == 'cpu':
-        xp_proj = np
-    elif algo == 'gpu':
-        xp_proj = cp
-    else:
-        raise ValueError
-
+    xp_proj = cp
     xp_vol = cp
 
     # prevent copying if already in GPU memory, otherwise copy to GPU
     y = [xp_proj.array(p, copy=False) for p in projections]
-    x = xp_vol.zeros(volume_geometry.shape, dtype)  # output volume
+    x = xp_vol.zeros(volume_geometry.shape, cp.float32)  # output volume
     x_tmp = xp_vol.ones_like(x)
 
-    fptor = ConeProjector()
+    fptor = ForwardProjector()
     fptor.projection_geometry = projection_geometry
     fptor.volume_geometry = volume_geometry
-
-    bptor = ConeBackprojector()
-    bptor.projection_geometry = projection_geometry
-    bptor.volume_geometry = volume_geometry
-
     def A(x, out=None):
         if out is None:
             out = xp_proj.zeros((len(projection_geometry),
                                  projection_geometry[0].detector.rows,
-                                 projection_geometry[0].detector.cols), dtype)
+                                 projection_geometry[0].detector.cols), cp.float32)
         fptor.volume = x
         fptor.projections = out
-        return fptor()
+        fptor()
+        return out
 
+    bptor = BackProjector(texture_type='array2d')
+    bptor.projection_geometry = projection_geometry
+    bptor.volume_geometry = volume_geometry
     def A_T(y, out=None):
         if out is None:
             out = xp_vol.zeros(x.shape, dtype=cp.float32)
@@ -168,16 +245,7 @@ def sirt(projections: np.ndarray,
         return out
 
     if mask is not None:
-        mask = xp_vol.asarray(mask, dtype)
-        if proj_mask is True:
-            type = cp.int32 if xp_proj == cp else np.int32
-            proj_mask = [(m > 0).astype(type) for m in A(mask)]
-
-    if isinstance(proj_mask, collections.abc.Sequence):
-        for y_i, m_i in zip(y, proj_mask):
-            y_i *= m_i
-        del proj_mask
-        cp.get_default_memory_pool().free_all_blocks()
+        mask = xp_vol.asarray(mask, cp.float32)
 
     # compute scaling matrix C
     # y_tmp = [aspitched(cp.ones_like(p)) for p in y]

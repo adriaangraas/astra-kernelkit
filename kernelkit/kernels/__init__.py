@@ -1,2 +1,2 @@
-from .cone_fp import ConeProjection
-from .cone_bp import ConeBackprojection
+from .cone_fp import RayDrivenConeFP
+from .cone_bp import VoxelDrivenConeBP

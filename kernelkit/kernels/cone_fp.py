@@ -1,42 +1,36 @@
 import copy
 from math import ceil
-from typing import Any, Sequence, Sized, Tuple
+from typing import Sequence
 
-from astrapy.geom import normalize_
-from astrapy.geom.proj import GeometrySequence
-from astrapy.geom.vol import VolumeGeometry
-from astrapy.kernel import Kernel, copy_to_symbol
 import numpy as np
 import cupy as cp
 
+from kernelkit.geom import normalize_
+from kernelkit.geom.proj import GeometrySequence
+from kernelkit.geom.vol import VolumeGeometry
+from kernelkit.kernel import BaseKernel, copy_to_symbol
 
-class ConeProjection(Kernel):
-    """Conebeam forward projection kernel."""
 
-    SLICES_PER_THREAD = 16
-    PIXELS_IN_X_BLOCK = 32
-    PIXELS_PER_Y_THREAD = 32
+class RayDrivenConeFP(BaseKernel):
+    """Ray-driven conebeam forward projection kernel."""
 
-    def __init__(self,
-                 slices_per_thread: int = None,
-                 pixels_per_thread: int = None,
-                 pixels_in_x_block: int = None,
-                 volume_axes: Tuple = (0, 1, 2),
-                 projection_axes: Tuple = (0, 1, 2),
-                 *args):
+    slices_per_thread = 16
+    pixels_in_x_block = 32
+    pixels_in_y_thread = 32
+
+    def __init__(self, pixels_per_thread: tuple = None,
+                 slices_per_block: int = None, volume_axes: tuple = (0, 1, 2),
+                 projection_axes: tuple = (0, 1, 2), *args):
         """Conebeam forward projection kernel.
 
         Parameters
         ----------
-        slices_per_thread : int, optional
-            Number of slices computed in one thread.
-            If `None` defaults to `SLICES_PER_THREAD`.
-        pixels_per_thread : int, optional
-            Number of pixels computed in one thread.
-            If `None` defaults to `PIXELS_PER_Y_THREAD`.
-        pixels_in_x_block : int, optional
-            Number of pixels computed in one block.
-            If `None` defaults to `PIXELS_IN_X_BLOCK`.
+        pixels_per_thread : tuple, optional
+            Number of pixels per block in the horizontal and vertical
+            directions. Defaults to `(32, 32)`.
+        slices_per_block : int, optional
+            Number of slices per block in the direction of the ray. Defaults
+            to `16`.
         volume_axes : tuple, optional
             Axes of the reconstruction volume. Defaults to `(0, 1, 2)`. The
             axes correspond to 'x', 'y', and 'z', respectively. 'x' is the
@@ -49,64 +43,45 @@ class ConeProjection(Kernel):
             `(1, 0, 2)` for this parameter.
         *args
             Arguments passed to the `Kernel` constructor.
+
+        See Also
+        --------
+        kernelkit.kernel.BaseKernel : Base class for CUDA kernels.
         """
-        self._slices_per_thread = (
-            slices_per_thread if slices_per_thread is not None
-            else self.SLICES_PER_THREAD)
-        self._pixels_per_y_thread = (
-            pixels_per_thread if pixels_per_thread is not None
-            else self.PIXELS_PER_Y_THREAD)
-        self._pixels_in_x_block = (
-            pixels_in_x_block if pixels_in_x_block is not None
-            else self.PIXELS_IN_X_BLOCK)
+        if pixels_per_thread is not None:
+            self.pixels_per_block = pixels_per_thread
+        if slices_per_block is not None:
+            self.slices_per_block = slices_per_block
         self._vol_axs = volume_axes
         self._proj_axs = projection_axes
+        self._module: cp.RawModule
         super().__init__('cone_fp.cu', *args)
 
     @property
-    def volume_axes(self):
+    def volume_axes(self) -> tuple:
         return self._vol_axs
 
     @property
-    def projection_axes(self):
+    def projection_axes(self) -> tuple:
         return self._proj_axs
 
     @staticmethod
-    def _get_names():
-        return (f'cone_fp<DIR_X>', f'cone_fp<DIR_Y>', f'cone_fp<DIR_Z>')
+    def _get_names() -> tuple:
+        return f'cone_fp<DIR_X>', f'cone_fp<DIR_Y>', f'cone_fp<DIR_Z>'
 
     def compile(self, nr_projs):
         return self._compile(
             name_expressions=self._get_names(),
-            template_kwargs={'slices_per_thread': self.SLICES_PER_THREAD,
-                             'pixels_per_thread': self.PIXELS_PER_Y_THREAD,
+            template_kwargs={'slices_per_thread': self.slices_per_thread,
+                             'pixels_per_thread': self.pixels_in_y_thread,
                              'nr_projs_global': nr_projs,
                              'volume_axes': self._vol_axs,
                              'projection_axes': self._proj_axs, })
 
-    def __call__(
-        self,
-        volume_texture: cp.cuda.texture.TextureObject,
-        volume_geometry: VolumeGeometry,
-        projection_geometry: Sequence,
-        projections: Sized,
-        rays_per_pixel: int = 1
-    ):
+    def __call__(self, volume_texture: cp.cuda.texture.TextureObject,
+                 projection_geometry: Sequence,
+                 volume_geometry: VolumeGeometry, projections):
         """Forward projection with conebeam geometry.
-
-        Then a loop is initiated over the angles in the batch. For every new
-        angle the major direction is inferred.
-
-        One kernel is launched on a grid of blocks with grid-dimensions:
-            (nr-regions, nr-angle-batches)
-        with
-         - each regions size PIXELS_PER_BLOCK_U * PIXELS_PER_BLOCK_V
-         - an angle batch size of MAX_ANGLES.
-        So each block
-         - owns a small portion of the detector;
-         - owns a consecutive sequence of projection angles.
-        and runs a thread for each combination (pixel-u, projection-angle).
-        Then that thread loops through a number on pixels in the row.
 
         Parameters
         ----------
@@ -118,11 +93,9 @@ class ConeProjection(Kernel):
         projection_geometry : Sequence of ProjectionGeometry
             Geometry of the projection data.
         projections : Sequence of cupy.ndarray or cp.ndarray
-            Projection data. Either provided as a list of 2D arrays or
+            data. Either provided as a list of 2D arrays or
             as a single 3D array. The shape of the array-like object must be
             according to the `projection_axes` specified in the constructor.
-        rays_per_pixel : int, optional
-            Supersampling is currently not supported.
         """
         if isinstance(projection_geometry, list):
             projection_geometry = GeometrySequence.fromList(
@@ -131,10 +104,6 @@ class ConeProjection(Kernel):
             projection_geometry = copy.deepcopy(projection_geometry)
 
         volume_shape = volume_geometry.shape
-        if not volume_geometry.has_isotropic_voxels():
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}` is not tested with anisotropic "
-                f"voxels yet.")
 
         assert volume_texture is not None
         if isinstance(projections, list):
@@ -150,15 +119,13 @@ class ConeProjection(Kernel):
             if len(projections) != len_dim_0:
                 raise ValueError(
                     f"The length of projection array must match the number of "
-                    f" {err} in the projection geometry, as the first axis "
-                    f" `projection_axes`, {self._proj_axs[0]}, is used.")
+                    f" {err} in the projection geometry, as the first axis of "
+                    f" `projection_axes`. However, "
+                    f"{self._proj_axs[0]}, is used for the projection angle.")
 
             # TODO(Adriaan): Checking other axes is hard, because looping the
             #                projections and validating the row/column shapes
-            #                is not efficient. This is probably because D2H
-            #                transfers are incurred when checking a CuPy array
-            #                shape.
-
+            #                is not efficient.
             for arr in projections:  # regardless of axes format used
                 if not arr.flags['C_CONTIGUOUS']:
                     raise ValueError(
@@ -173,36 +140,27 @@ class ConeProjection(Kernel):
                         f"Currently there is only support for dtypes "
                         f"{self.SUPPORTED_DTYPES}, but got {arr.dtype}.")
 
-        if rays_per_pixel != 1:
-            raise NotImplementedError(
-                "Detector supersampling is currently not supported.")
-
-        # TODO: do not do D2H here to support CUDA graphs
-        proj_ptrs = [p.data.ptr for p in projections]
-        assert len(proj_ptrs) == len(set(proj_ptrs)), (
-            "All projection files need to reside in own memory.")
-        proj_ptrs = cp.array(proj_ptrs)
-
         normalize_(projection_geometry, volume_geometry)
 
-        module = self.compile(len(projection_geometry))
-        funcs = [module.get_function(n) for n in self._get_names()]
-        self._upload_geometries(projection_geometry, module)
+        if not hasattr(self, '_module'):
+            self._module = self.compile(len(projection_geometry))
+        funcs = [self._module.get_function(n) for n in self._get_names()]
+        self._upload_geometries(projection_geometry, self._module)
         output_scale = self._output_scale(volume_geometry.voxel_size)
         rows = int(projection_geometry.detector.rows[0])
         cols = int(projection_geometry.detector.cols[0])
-        blocks_x = ceil(rows / self._pixels_in_x_block)
-        blocks_y = ceil(cols / self._pixels_per_y_thread)
+        blocks_x = ceil(rows / self.pixels_in_x_block)
+        blocks_y = ceil(cols / self.pixels_in_y_thread)
 
         def _launch(start: int, stop: int, axis: int):
-            # print(f"Launching {start}-{stop}, axis {axis}")
+            """Launch kernel for a range of projections"""
             # slice volume in the axis of the ray direction
-            for i in range(0, volume_shape[axis], self._slices_per_thread):
+            for i in range(0, volume_shape[axis], self.slices_per_thread):
                 funcs[axis](
                     (blocks_x, blocks_y, stop - start),  # grid
-                    (self._pixels_in_x_block,),  # threads
+                    (self.pixels_in_x_block,),  # threads
                     (volume_texture,
-                     proj_ptrs,
+                     projections,
                      i,  # start slice
                      start,  # projection
                      *volume_shape,
@@ -224,7 +182,7 @@ class ConeProjection(Kernel):
         # Run over all angles, grouping them into groups of the same
         # orientation (roughly horizontal vs. roughly vertical).
         # Start a stream of grids for each such group.
-        # TODO(Adriaan): sort and launch?
+        # TODO(Adriaan): instead sort and launch?
         start = 0
         for i in range(len(projection_geometry)):
             # if direction changed: launch kernel for this batch
@@ -237,10 +195,10 @@ class ConeProjection(Kernel):
 
     @staticmethod
     def _output_scale(voxel_size: np.ndarray) -> list:
-        """Returns an output scale for each axis"""
-        eps = 1e-4
+        """Returns an output scale for each axis."""
+        EPS = 1e-4
         v = voxel_size
-        if abs(v[0] / v[1] - 1) > eps or abs(v[0] / v[2] - 1) > eps:
+        if abs(v[0] / v[1] - 1) > EPS or abs(v[0] / v[2] - 1) > EPS:
             x = [(v[1] / v[0]) ** 2, (v[2] / v[0]) ** 2, v[0] ** 2]
             y = [(v[0] / v[1]) ** 2, (v[2] / v[1]) ** 2, v[0] * v[1]]
             z = [(v[0] / v[2]) ** 2, (v[1] / v[2]) ** 2, v[0] * v[2]]
@@ -251,9 +209,7 @@ class ConeProjection(Kernel):
         return output_scale
 
     @staticmethod
-    def _upload_geometries(
-            geometries,
-            module: cp.RawModule):
+    def _upload_geometries(geometries: GeometrySequence, module: cp.RawModule):
         """Transfer geometries to device as structure of arrays."""
         # TODO(Adriaan): maybe make a mapping between variables
         xp = geometries.xp

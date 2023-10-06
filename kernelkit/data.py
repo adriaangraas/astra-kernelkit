@@ -1,14 +1,11 @@
-from typing import Tuple
-
+"""Data manipulation utilities."""
 import cupy as cp
 import numpy as np
-
-"""Pitched memory utilities."""
 
 _CUDA_PITCH = 32  # the default CUDA pitch in bytes
 
 
-def pitched_shape(array) -> Tuple[int, int, int]:
+def pitched_shape(array) -> tuple[int, int, int]:
     """Returns a suggestion for a pitched shape of an array, typically slightly
     larger than the original shape.
 

@@ -103,7 +103,7 @@ class VoxelDrivenConeBP(BaseKernel):
 
         if texture.value == self.TextureFetching.Tex2D.value:
             if self._proj_axs[0] != 0:
-                raise ValueError("If an array of textures pointers is given, "
+                raise ValueError("If an array of texture pointers is given, "
                                  "the first `projection_axes` axis must be "
                                  "angles, i.e., must be 0.")
         elif texture.value in (self.TextureFetching.Tex2DLayered.value,

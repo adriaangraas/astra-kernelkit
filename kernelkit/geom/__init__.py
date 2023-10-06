@@ -1,13 +1,8 @@
-import copy
+from typing import Any
 import warnings
-from typing import Any, Sequence
 
-import numpy as np
-
-from astrapy.geom.proj import (GeometrySequence, ProjectionGeometry,
-                               rotate, scale, shift,
-                               rotate_, scale_, shift_)
-from astrapy.geom.vol import VolumeGeometry
+from kernelkit.geom.proj import *
+from kernelkit.geom.vol import VolumeGeometry
 
 
 def resolve_volume_geometry(
@@ -18,7 +13,46 @@ def resolve_volume_geometry(
     projection_geometry=None,
     verbose=False,
 ):
-    """Resolves a `VolumeGeometry` given a few volume parameters. """
+    """Resolves a `VolumeGeometry` given partial parameters.
+
+    Parameters
+    ----------
+    shape : array-like, optional
+        The shape of the volume, by default None.
+        Pass as a scalar, or a tuple of length 3 with (x ,y, z) filled
+        with None for unknown dimensions.
+    extent_min : array-like, optional
+        The minimum extent of the volume, by default None.
+        Pass as a scalar, or a tuple of length 3 with (x ,y, z) filled
+        with None for unknown dimensions.
+        Pass as a scalar, or a tuple of length 3 with (x ,y, z) filled
+        with None for unknown dimensions.
+    extent_max : array-like, optional
+        The maximum extent of the volume, by default None.
+        Pass as a scalar, or a tuple of length 3 with (x ,y, z) filled
+        with None for unknown dimensions.
+    voxel_size : array-like, optional
+        The size of a single voxel, by default None.
+        Pass as a scalar, or a tuple of length 3 with (x ,y, z) filled
+        with None for unknown dimensions.
+    projection_geometry : ProjectionGeometry, optional
+        A projection geometry, by default None. Is used to suggest the
+        volume extent in case insufficient information can be deduced from
+        the other parameters.
+    verbose : bool, optional
+        Whether to print the parameters solving process, by default False.
+
+    Returns
+    -------
+    VolumeGeometry
+        The resolved volume geometry.
+
+    Notes
+    -----
+     - Currently only volume geometries with isotropic voxels are deduced.
+     - The function may not respect the input parameters exactly, if this is
+         necessary to fulfill the constraint of isotropic voxels.
+    """
 
     def _parse(arg):
         if np.isscalar(arg) or arg is None:
@@ -29,21 +63,30 @@ def resolve_volume_geometry(
     extent_min = _parse(extent_min)
     extent_max = _parse(extent_max)
     vox_sz = _parse(voxel_size)
+    resolved_dims = [False] * 3
 
-    def solve(n, xmin, xmax, sz, dim):
-        """
-        Solve, for a dimension `d`:
+    def _solve(n, xmin, xmax, sz, dim):
+        """Attempt to resolve a single dimension.
+
+        Notes
+        -----
+        The function works on the variables in the outer scope.
+
+        The following equations hold:
             nr_voxels (`n`) * voxel_size (`sz`) = volume extent (`xmax - xmin`)
-        When two of these parameters are unknown, the third is resolved.
+        When two of these parameters are known, a third is resolved.
         """
         inferred = False
         if n is not None:
             if xmin is not None and xmax is not None:
                 x = xmax - xmin
                 if sz is not None:
-                    assert np.allclose(n * sz, x), (
-                        f"{n} voxels * {sz} voxel_size must equal extent"
-                        f" in dim {dim}.")
+                    if not np.allclose(n * sz, x):
+                        raise ValueError(
+                            f"The {dim}-th dimension contains conflicting parameter "
+                            f"values: nr_voxels={n}, voxel_size={sz}, "
+                            f"extent_min={xmin}, extent_max={xmax}. It must hold "
+                            f"that nr_voxels * voxel_size = extent_max - extent_min.")
                 else:
                     sz = x / n  # resolved
                 inferred = True
@@ -82,25 +125,26 @@ def resolve_volume_geometry(
                     " and min value, or inferred automatically.")
 
         if inferred:
-            # if verbose:
-            #     print("Computed volume parameters: ")
-            #     print(f" - shape: {shape}")
-            #     print(f" - extent min: {extent_min}")
-            #     print(f" - extent max: {extent_max}")
-            #     print(f" - voxel size: {vox_sz}")
-
+            if verbose:
+                print(f"Solved:"
+                      f"\n - shape: \t\t {n}"
+                      f"\n - extent min: \t {xmin}"
+                      f"\n - extent max: \t {xmax}"
+                      f"\n - voxel size: \t {sz}")
             return n, xmin, xmax, sz
 
         return False
 
-    resolved_dims = [False] * 3
-
     def _resolve_dims(dims, vol_ext_min, vol_ext_max):
+        """Attempt to resolve a set of dimensions."""
         for d in dims:
             if resolved_dims[d]:
                 continue
-            attempt = solve(shape[d], vol_ext_min[d], vol_ext_max[d],
-                            vox_sz[d], d)
+
+            if verbose:
+                print(f"Attempting {dims[d]}...")
+            attempt = _solve(shape[d], vol_ext_min[d], vol_ext_max[d],
+                             vox_sz[d], d)
             if attempt:
                 shape[d] = attempt[0]
                 extent_min[d] = attempt[1]
@@ -108,10 +152,10 @@ def resolve_volume_geometry(
                 vox_sz[d] = attempt[3]
                 resolved_dims[d] = True
 
-    # try to resolve at least one dimension, so that we have a voxel size
+    # 1: try to resolve at least one dimension, so that we have a voxel size.
     _resolve_dims(range(3), extent_min, extent_max)
 
-    # if we failed to do that, throw in automatic geometry inference
+    # 2: if we failed to do that, throw in automatic geometry inference
     if not np.any(resolved_dims):
         if projection_geometry is not None:
             # assume geometry is centered
@@ -138,7 +182,7 @@ def resolve_volume_geometry(
                              "of at least a single dimension. Consider "
                              "passing a geometry for automatic inference.")
 
-    # replicate the minimum voxel size to other dimensions, and retry
+    # 3: replicate the minimum voxel size to other dimensions, and retry
     vox_sz = np.array(vox_sz)
     vox_sz[vox_sz == None] = (np.min(vox_sz[np.where(vox_sz != None)]))
     vox_sz.astype(np.float32)
@@ -177,18 +221,20 @@ def resolve_volume_geometry(
             try_ext_max[d] = nr_voxels_required / 2 * vox_sz[d]
             _resolve_dims([d], try_ext_min, try_ext_max)
 
+    if verbose:
+        print(f"The final deduced volume parameters are: "
+              f"\n - shape: \t\t {shape}"
+              f"\n - extent min: \t {extent_min}"
+              f"\n - extent max: \t {extent_max}"
+              f"\n - voxel size: \t {vox_sz}")
+
     if not np.all(resolved_dims):
         raise RuntimeError("Could not resolve the volume geometry. The "
-                            "following dimensions are still unknown: "
-                            f"{np.where(np.logical_not(resolved_dims))[0]}")
-
-
-    if verbose:
-        print("Computed volume parameters: ")
-        print(f" - shape \t\t {shape}")
-        print(f" - extent min \t {extent_min}")
-        print(f" - extent max \t {extent_max}")
-        print(f" - voxel size \t {vox_sz}")
+                           "following dimensions cannot be inferred: "
+                           f"{np.where(np.logical_not(resolved_dims))[0]}. "
+                           f"Provide two of the three unknowns and/or one "
+                           f"of the projection geometries to deduce the "
+                           f"dimensions.")
 
     return VolumeGeometry(
         shape=shape,
@@ -199,7 +245,24 @@ def resolve_volume_geometry(
 
 def suggest_volume_extent(geometry: ProjectionGeometry,
                           object_position: Sequence = (0., 0., 0.)):
-    """Suggest a volume extent for a given geometry."""
+    """Suggest a volume extent for a given geometry.
+
+    Parameters
+    ----------
+    geometry : ProjectionGeometry
+        The geometry to suggest a volume extent for.
+    object_position : Sequence, optional
+        The position of the object in the volume, by default (0., 0., 0.).
+
+    Returns
+    -------
+    tuple
+        The suggested minimum and maximum extent of the volume.
+
+    Notes
+    -----
+    In case of a large cone angle, the volume extent may be too small.
+    """
     # TODO(Adriaan): now using only one geometry.
     #    perhaps use polygon clipping on multiple geoms
     #   to find the intersection of volume areas.
@@ -224,8 +287,22 @@ def suggest_volume_extent(geometry: ProjectionGeometry,
             np.array([width / 2, width / 2, height / 2]))
 
 
-def normalize_(geometries: Any,
+def normalize_(geometries: list[ProjectionGeometry],
                volume_geometry: VolumeGeometry):
+    """In-place transform of projections to compensate volume normalization.
+
+    Parameters
+    ----------
+    geometries : list[ProjectionGeometry]
+        The projection geometries to normalize.
+    volume_geometry : VolumeGeometry
+        The volume geometry to normalize to.
+
+    Notes
+    -----
+    This function is a helper for kernels to work on a unit cube, rather than
+    a volume with arbitrary extents, axis and voxel sizes.
+    """
     xp = geometries.xp
     shift_(geometries, -(xp.asarray(volume_geometry.extent_min)
                          + xp.asarray(volume_geometry.extent_max)) / 2)
