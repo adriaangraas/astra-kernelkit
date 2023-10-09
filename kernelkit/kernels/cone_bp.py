@@ -154,7 +154,7 @@ class VoxelDrivenConeBP(BaseKernel):
         """
         if len(params) // 12 > self._compiled_template_kwargs["nr_projs_global"]:
             raise ValueError(
-                f"Number of projections, {len(params)}, exceeds the "
+                f"Number of projections, {len(params) // 12}, exceeds the "
                 "the maximum of the compiled kernel, namely "
                 f"{self._compiled_template_kwargs['nr_projs_global']}. "
                 "Please recompile the kernel with a higher "
