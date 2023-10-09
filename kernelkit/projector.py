@@ -346,7 +346,7 @@ class BackProjector(Projector):
         self._texture_type = texture_type.lower()
         if self._texture_type not in self.TEXTURE_TYPES:
             raise ValueError(
-                "`texture_type` not supported. Please choose "
+                "`TEXTURE_TYPE` not supported. Please choose "
                 f"one of the following: {self.TEXTURE_TYPES}."
             )
         type2texture = {
@@ -429,7 +429,7 @@ class BackProjector(Projector):
 
         Notes
         -----
-         - The array may be pitched if `texture_type` is 'pitch2d'.
+         - The array may be pitched if `TEXTURE_TYPE` is 'pitch2d'.
         """
         try:
             if self._texture_type == "pitch2d":
@@ -462,7 +462,7 @@ class BackProjector(Projector):
         updated in-place. Otherwise, the reference in the class is just
         set to the given value.
          - In principle this function does not allocate memory. However,
-        the array is copied to a pitched layout if `texture_type`
+        the array is copied to a pitched layout if `TEXTURE_TYPE`
         is 'pitch2d' and the array is not pitched.
         """
         if not (
