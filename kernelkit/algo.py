@@ -59,6 +59,8 @@ def bp(
 
     Parameters
     ----------
+    projection_axes : Sequence[int], optional
+        The axes of the projections. Default is (0, 1, 2).
     projections : array-like
         Either a 2D list of projections, or a 3D array of projections.
     projection_geometry : list[ProjectionGeometry]
@@ -138,7 +140,10 @@ def fbp(
     --------
     kernelkit.algo.bp : Backprojection function.
     """
-    raise NotImplementedError("FBP is not implemented yet.")
+    raise NotImplementedError(
+        "FBP is not implemented yet. Use a conebeam geometry with the `bp` function, or"
+        " file an issue."
+    )
 
     if not "kernel" in bp_kwargs:
         bp_kwargs.update(kernel=VoxelDrivenConeBP())
