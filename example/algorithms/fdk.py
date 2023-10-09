@@ -2,6 +2,8 @@
 import kernelkit as kk
 import matplotlib.pyplot as plt
 import numpy as np
+import cupy as cp
+import cupyx as cpx
 
 # projection geometries of a cube in the 3D space
 geom_t0 = kk.ProjectionGeometry(
@@ -13,7 +15,7 @@ angles = np.linspace(0, 2 * np.pi, 1000, False)
 proj_geoms = [kk.rotate(geom_t0, yaw=a) for a in angles]
 
 # volume and volume geometries
-vol = np.zeros((100, 110, 120))  # a cube with random voxels
+vol = cpx.zeros_pinned((100, 110, 120), dtype=cp.float32)
 vol[25:45, 25:45, 25:45] = np.random.random([20] * 3)
 vol[35:65, 35:65, 35:65] += np.random.random([30] * 3)
 vol_geom = kk.resolve_volume_geometry(
