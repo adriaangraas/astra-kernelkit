@@ -102,7 +102,9 @@ class VoxelDrivenConeBP(BaseKernel):
             Maximum number of projections to be processed in one kernel.
             If `None` defaults to the ASTRA Toolbox default of 1024. The
             value is used to compile a fixed amount of constant memory into
-            the kernel that store the geometry parameters.
+            the kernel that store the geometry parameters. This means that
+            the kernel can be launched with different numbers N_\theta of
+            projections, but N_\theta must be smaller or equal to `max_projs`.
         texture : str, optional
             Type of texture to use. Defaults to `3D`. Can be one of the types
             specified in `TextureFetching`.
