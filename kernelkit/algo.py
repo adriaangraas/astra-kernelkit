@@ -1,6 +1,7 @@
 from typing import Any, Callable, Sequence
 
 import cupy as cp
+import cupyx as cpx
 import numpy as np
 from tqdm import tqdm
 
@@ -31,7 +32,7 @@ def fp(
         The volume geometry.
     out: array-like, optional
         The projection array to write the result to. If not given, a new
-        array is allocated on the CPU and returned.
+        array is allocated on the CPU in page-locked memory and returned.
 
     Returns
     -------
