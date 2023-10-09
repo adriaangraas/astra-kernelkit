@@ -41,7 +41,10 @@ def fp(
     op = XrayTransform(projection_geometry, volume_geometry)
     vol = cp.asarray(volume, dtype=cp.float32)
     result = op(vol, out=out)
-    return result.get() if out is None else out
+    if out is None:
+        out = cpx.zeros_like_pinned(result, dtype=cp.float32)
+    result.get(out=out)
+    return out
 
 
 def bp(
@@ -72,6 +75,9 @@ def bp(
     preproc_fn : Callable, optional
         A function to apply to the projections before backprojection,
         especially suited for pre-processing on the GPU. Default is None.
+    out : array-like, optional
+        The volume array to write the result to. If not given, a new array is
+        allocated on the CPU in page-locked memory and returned.
 
     Returns
     -------
@@ -84,9 +90,9 @@ def bp(
     the kernel passing mechanism.
     """
     if out is None:
-        out = cp.zeros(volume_geometry.shape, cp.float32)
+        out_gpu = cp.zeros(volume_geometry.shape, cp.float32)
     else:
-        out = cp.asarray(out, dtype=cp.float32)
+        out_gpu = cp.asarray(out, dtype=cp.float32)
 
     projections = cp.asarray(projections, dtype=cp.float32)
 
@@ -107,9 +113,14 @@ def bp(
     ptor.projection_geometry = projection_geometry
     ptor.volume_geometry = volume_geometry
     ptor.projections = projections
-    ptor.volume = out
+    ptor.volume = out_gpu
     ptor()
-    return out.get()
+
+    if out is None or isinstance(out, cp.ndarray):
+        out_cpu = cpx.zeros_like_pinned(out_gpu, dtype=cp.float32)
+        return out_gpu.get(out=out_cpu)
+    elif isinstance(out, np.ndarray):
+        return out_gpu.get(out=out)
 
 
 def fbp(
