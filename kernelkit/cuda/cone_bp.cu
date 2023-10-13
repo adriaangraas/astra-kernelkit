@@ -29,9 +29,9 @@ static const unsigned int volBlockY = {{ nr_vxls_block_y }};
 static const unsigned int volBlockZ = {{ nr_vxls_block_z }};
 
 struct Params {
-	float4 numeratorU;
-	float4 numeratorV;
-	float4 denominator;
+    float4 numeratorU;
+    float4 numeratorV;
+    float4 denominator;
 };
 
 __constant__ Params params[{{ nr_projs_global }}];
@@ -50,28 +50,28 @@ __global__ void cone_bp(
     int voxelsZ,
     float outputScale
 ) {
-	int end = start + {{ nr_projs_block }};
-	if (end > nrProjections)
-		end = nrProjections;
+    int end = start + {{ nr_projs_block }};
+    if (end > nrProjections)
+        end = nrProjections;
 
     const int n = (voxelsX + volBlockX - 1) / volBlockX;
-	const int X = blockIdx.x % n * volBlockX + threadIdx.x;
-	const int Y = blockIdx.x / n * volBlockY + threadIdx.y;
+    const int X = blockIdx.x % n * volBlockX + threadIdx.x;
+    const int Y = blockIdx.x / n * volBlockY + threadIdx.y;
 
-	if (X >= voxelsX || Y >= voxelsY)
-		return;
+    if (X >= voxelsX || Y >= voxelsY)
+        return;
 
-	const int startZ = blockIdx.y * volBlockZ;
+    const int startZ = blockIdx.y * volBlockZ;
 
-	// shift voxel coordinates to center, add .5 for texture coord
-	const float fX = X - .5f * voxelsX + .5f;
-	const float fY = Y - .5f * voxelsY + .5f;
-	const float fZ = startZ - .5f * voxelsZ + .5f;
+    // shift voxel coordinates to center, add .5 for texture coord
+    const float fX = X - .5f * voxelsX + .5f;
+    const float fY = Y - .5f * voxelsY + .5f;
+    const float fZ = startZ - .5f * voxelsZ + .5f;
 
     // init Z to zero
-	float Z[{{ nr_vxls_block_z }}];
-	for (int i = 0; i < {{ nr_vxls_block_z }}; ++i)
-		Z[i] = .0f;
+    float Z[{{ nr_vxls_block_z }}];
+    for (int i = 0; i < {{ nr_vxls_block_z }}; ++i)
+        Z[i] = .0f;
 
     for (int j = start; j < end; ++j) {
         const float4& nU = params[j].numeratorU;
@@ -120,11 +120,11 @@ __global__ void cone_bp(
     }
 
     // make sure to write inside volume
-	int endZ = {{ nr_vxls_block_z }};
-	if (endZ > voxelsZ - startZ)
-		endZ = voxelsZ - startZ;
+    int endZ = {{ nr_vxls_block_z }};
+    if (endZ > voxelsZ - startZ)
+        endZ = voxelsZ - startZ;
 
     // coalesced write to Z
-	for (int i = 0; i < endZ; ++i)
-	    volume[((startZ + i) * voxelsY + Y) * voxelsX + X] += Z[i] * outputScale;
+    for (int i = 0; i < endZ; ++i)
+        volume[((startZ + i) * voxelsY + Y) * voxelsX + X] += Z[i] * outputScale;
 }
