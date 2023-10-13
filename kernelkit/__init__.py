@@ -1,4 +1,4 @@
-__version__ = "0.1.0"
+__version__ = "1.0.0-alpha.1"
 
 from .operator import *
 from .algo import fp, bp, fdk, sirt

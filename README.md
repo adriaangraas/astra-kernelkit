@@ -1,6 +1,11 @@
 ## The ASTRA KernelKit project
 ASTRA KernelKit is part of the `ASTRA Toolbox` project.
 
+> [!WARNING]
+> This is a pre-release version. We're in the process of stabilizing the API,
+> writing tests and adding documentation. For the latest version, check out
+> the [development branch](https://github.com/adriaangraas/astra-kernelkit/tree/develop).
+
 [![Documentation Status](https://readthedocs.org/projects/astra-kernelkit/badge/?version=latest)](https://astra-kernelkit.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/astra-kernelkit.svg)](https://badge.fury.io/py/astra-kernelkit)
 [![Build Status](https://travis-ci.com/astra-kernelkit/astra-kernelkit.svg?branch=master)](https://travis-ci.com/astra-kernelkit/astra-kernelkit)
