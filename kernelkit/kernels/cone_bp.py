@@ -314,10 +314,11 @@ class VoxelDrivenConeBP(BaseKernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
-        if isinstance(projection_geometry, list):
-            geom_seq = GeometrySequence.fromList(projection_geometry)
-        else:
+        if isinstance(projection_geometry, GeometrySequence):
             geom_seq = copy.deepcopy(projection_geometry)
+        else:
+            # list, tuple, or ndarray
+            geom_seq = GeometrySequence.fromList(projection_geometry)
 
         xp = geom_seq.xp
         normalize_(geom_seq, volume_geometry)
