@@ -4,7 +4,7 @@ import cupy as cp
 import numpy as np
 from tqdm import tqdm
 
-import astrapy as ap
+import kernelkit as kk
 
 
 def test_stream():
@@ -15,30 +15,30 @@ def test_stream():
     EXT_MAX = np.array((.5, .5, .5)) / 100 * VOXELS * 60
     SRC_DIST = 100.
     DET_DIST = 0.
-    geom_t0 = ap.ProjectionGeometry([-SRC_DIST, 0, 0.], [DET_DIST, 0., 0.],
+    geom_t0 = kk.ProjectionGeometry([-SRC_DIST, 0, 0.], [DET_DIST, 0., 0.],
                                     [0., 1., 0.], [0., 0., 1.],
-                                    ap.Detector(*DETECTOR_SHAPE, 1., 1.))
-    geoms = [ap.rotate(geom_t0, yaw=a * 2. * np.pi / NR_ANGLES)
+                                    kk.Detector(*DETECTOR_SHAPE, 1., 1.))
+    geoms = [kk.rotate(geom_t0, yaw=a * 2. * np.pi / NR_ANGLES)
              for a in range(NR_ANGLES)]
 
     vol_data = cp.zeros(VOXELS, dtype=cp.float32)
     vol_data[17:113, 17:113, 17:113] = 1
     vol_data[33:97, 33:97, 33:97] = 0
-    fp = ap.ConeProjector()
+    fp = kk.ForwardProjector()
     fp.projection_geometry = geoms
     fp.volume = vol_data
     proj_data = fp(EXT_MIN, EXT_MAX)
 
-    bp = ap.ConeBackprojection()
-    params = bp.geoms2params(ap.GeometrySequence.fromList(geoms),
+    bp = kk.ConeBackprojection()
+    params = bp.geoms2params(kk.GeometrySequence.fromList(geoms),
                              vol_data.shape, EXT_MIN, EXT_MAX)
     with cp.cuda.stream.Stream(non_blocking=True):
         for _ in tqdm(itertools.count()):
-            txt = ap.copy_to_texture(proj_data)
+            txt = kk.copy_to_texture(proj_data)
             vol_data.fill(0.)
             bp(txt, params, vol_data, EXT_MIN, EXT_MAX)
             vol_data[...] = cp.reshape(vol_data, tuple(reversed(vol_data.shape))).T
-    bp2 = ap.ConeBackprojector()
+    bp2 = kk.BackProjector()
     bp2.projection_geometry = geoms
     bp2.projections = proj_data
     f2 = bp2(EXT_MIN, EXT_MAX, volume_shape=VOXELS)
@@ -69,29 +69,29 @@ def test_graph():
     EXT_MAX = np.array((.5, .5, .5)) / 100 * VOXELS * 60
     SRC_DIST = 100.
     DET_DIST = 0.
-    geom_t0 = ap.ProjectionGeometry([-SRC_DIST, 0, 0.], [DET_DIST, 0., 0.],
+    geom_t0 = kk.ProjectionGeometry([-SRC_DIST, 0, 0.], [DET_DIST, 0., 0.],
                                     [0., 1., 0.], [0., 0., 1.],
-                                    ap.Detector(*DETECTOR_SHAPE, 1., 1.))
-    geoms = [ap.rotate(geom_t0, yaw=a * 2. * np.pi / NR_ANGLES)
+                                    kk.Detector(*DETECTOR_SHAPE, 1., 1.))
+    geoms = [kk.rotate(geom_t0, yaw=a * 2. * np.pi / NR_ANGLES)
              for a in range(NR_ANGLES)]
 
     vol_data = cp.zeros(VOXELS, dtype=cp.float32)
     vol_data[17:113, 17:113, 17:113] = 1
     vol_data[33:97, 33:97, 33:97] = 0
-    vol_geom = ap.resolve_volume_geometry(
+    vol_geom = kk.resolve_volume_geometry(
         shape=vol_data.shape,
        extent_min=EXT_MIN, extent_max=EXT_MAX)
 
-    fp = ap.ConeProjector()
+    fp = kk.ForwardProjector()
     fp.projection_geometry = geoms
     fp.volume = vol_data
     fp.volume_geometry = vol_geom
     fp.projections = cp.zeros((NR_ANGLES, *DETECTOR_SHAPE), dtype=cp.float32)
     fp()
 
-    bp = ap.kernels.ConeBackprojection()
-    params = bp.geoms2params(ap.GeometrySequence.fromList(geoms), vol_geom)
-    txt = ap.kernel.copy_to_texture(fp.projections)
+    bp = kk.kernels.VoxelDrivenConeBP()
+    params = bp.geoms2params(kk.GeometrySequence.fromList(geoms), vol_geom)
+    txt = kk.kernel.copy_to_texture(fp.projections)
 
     with cp.cuda.stream.Stream() as stream:
         vol_data.fill(0.)
