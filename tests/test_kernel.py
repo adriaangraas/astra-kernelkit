@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np
 
-from astrapy.kernel import copy_to_texture
+from kernelkit.kernel import copy_to_texture
 
 
 def test_to_texture():
@@ -33,3 +33,6 @@ def test_to_texture():
 
     assert x2.shape == x1.shape
     np.testing.assert_array_almost_equal(x2.get(), x1.get())
+
+
+def test_compilation():

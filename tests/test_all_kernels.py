@@ -4,27 +4,28 @@ import cupy as cp
 import numpy as np
 import pytest
 
-import astrapy.kernels
-import astrapy as ap
-from astrapy.kernel import copy_to_texture
+import kernelkit.kernels
+import kernelkit as kk
+from kernelkit.kernel import copy_to_texture
 
 
 @pytest.fixture
 def fpkern():
-    return astrapy.kernels.ConeProjection()
+    return kernelkit.kernels.RayDrivenConeFP()
 
 
 @pytest.fixture
 def bpkern():
-    return astrapy.kernels.ConeBackprojection()
+    return kernelkit.kernels.VoxelDrivenConeBP()
 
 
-@pytest.fixture()
+@pytest.fixture
 def proj():
     rows, cols = 9, 9
     return cp.zeros((rows, cols), dtype=cp.float32)
 
 
+@pytest.fixture
 def volume(s1=10, s2=None, s3=None):
     if s2 is None:
         s2 = s1
@@ -41,12 +42,10 @@ def geom(rows=9,
          det_dist=5.,
          px_h=1.,
          px_w=1.):
-    return ap.ProjectionGeometry(
+    return kk.ProjectionGeometry(
         [-src_dist, 0, 0],
         [det_dist, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-        ap.Detector(rows, cols, px_h, px_w))
+        kk.Detector(rows, cols, px_h, px_w))
 
 
 @pytest.mark.parametrize('vol_fill, vol_ext, vol_sz',
@@ -61,7 +60,7 @@ def test_scaling_ray_integral_through_cube(
     vol, vol_shp = volume(vol_sz)
     vol.fill(vol_fill)
     vol_txt = copy_to_texture(vol)
-    vol_geom = ap.resolve_volume_geometry(
+    vol_geom = kk.resolve_volume_geometry(
         shape=vol_shp,
         extent_min=np.array((-.5, -.5, -.5)) * vol_ext,
         extent_max=np.array((.5, .5, .5)) * vol_ext)
@@ -74,3 +73,12 @@ def test_scaling_ray_integral_through_cube(
     assert proj_cpu.shape == proj.shape
     assert proj_cpu[4, 4] == pytest.approx(vol_fill * vol_ext, 1e-6)
 
+
+# @pytest.mark.parametrize(
+#     'kern', (fpkern, bpkern))
+# def test_compile_is_explicit(kern, request, volume):
+#     kern = request.getfixturevalue(kern.__name__)
+#     assert not kern.is_compiled
+    texture = kernelkit.kernel.copy_to_texture(volume)
+    kern(textures, volume, volume_geometry)
+    return True
