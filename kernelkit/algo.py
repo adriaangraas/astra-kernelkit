@@ -301,7 +301,7 @@ def sirt(
         fptor()
         return out
 
-    bptor = BackProjector(texture_type="array2d")
+    bptor = BackProjector(texture_type="pitch2d")
     bptor.projection_geometry = projection_geometry
     bptor.volume_geometry = volume_geometry
 
