@@ -1,6 +1,9 @@
 import numpy as np
 
-class FanProjection(Kernel):
+from kernelkit.kernel import BaseKernel
+
+
+class FanProjection(BaseKernel):
     """Fanbeam forward projection"""
     ANGLES_PER_BLOCK = 16
     DET_BLOCK_SIZE = 32
@@ -27,7 +30,7 @@ class FanProjection(Kernel):
             mode_horizontal=False)
 
     def __call__(self,
-                 volume: astrapy.Volume,
+                 volume: kernelkit.Volume,
                  sino: astrapy.Sinogram,
                  geometry: list[astrapy.Static2DGeometry],
                  rays_per_pixel: int = 1) -> astrapy.Sinogram:
@@ -129,7 +132,7 @@ class FanProjection(Kernel):
         # memory_pool = cp.cuda.PinnedMemoryPool()
         # cp.cuda.set_pinned_memory_allocator(memory_pool.malloc)
 
-        # we have two streams, one for each kernel
+        # we have two num_streams, one for each kernel
         streams = [cp.cuda.stream.Stream()] * 2
         kernels = (self.horizontal.get_function(self.FAN_FP_FUNCTION),
                    self.vertical.get_function(self.FAN_FP_FUNCTION))
@@ -185,7 +188,7 @@ class FanBackprojection(Kernel):
                  sino: astrapy.Sinogram,
                  geometry: list[astrapy.Static2DGeometry]
                  ) -> astrapy.Volume:
-        """Backprojection with fan geometry."""
+        """XrayBackprojection with fan geometry."""
 
         if isinstance(sino.measurement, np.ndarray):
             sino.measurement = cp.asarray(sino.measurement, dtype=self.FLOAT_DTYPE)
@@ -212,7 +215,7 @@ class FanBackprojection(Kernel):
             raise ValueError("`volume` must have exactly 2 dimensions.")
 
         if not volume.has_isotropic_voxels:
-            # I think scaling will go wrong (i.e. ASTRA Toolbox cannot do non-square pixels as well)
+            # I think factor will go wrong (i.e. ASTRA Toolbox cannot do non-square pixels as well)
             raise NotImplementedError(
                 f"`{self.__class__.__name__}` is not tested with anisotropic voxels yet.")
 
@@ -282,7 +285,7 @@ class FanBackprojection(Kernel):
         # scaling_factor /= (self.reco_space.weighting.const /
         #                    self.reco_space.cell_volume)
 
-        output_scale /= float(volume.voxel_volume)
+        output_scale /= float(volume.voxel_volume())
         output_scale *= float(sino.pixel_volume)
 
         volume.measurement *= output_scale
