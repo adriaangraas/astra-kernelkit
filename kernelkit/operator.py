@@ -188,8 +188,8 @@ class XrayTransform(ProjectorOperator):
         bp_kwargs = bp_kwargs or {}
         if use_toolbox:
             from kernelkit.toolbox_support import (
-                ForwardProjectorAdapter,
-                BackprojectorAdapter,
+                ForwardProjector,
+                BackProjector,
             )
 
             if projection_axes != (1, 0, 2):
@@ -206,8 +206,8 @@ class XrayTransform(ProjectorOperator):
                     " Simply set `volume_axes=(2, 1, 0)` and "
                     " transpose the input."
                 )
-            projector = ForwardProjectorAdapter(**fp_kwargs)
-            backprojector = BackprojectorAdapter(**bp_kwargs)
+            projector = ForwardProjector(**fp_kwargs)
+            backprojector = BackProjector(**bp_kwargs)
         else:
             projector = ForwardProjector(
                 volume_axes=volume_axes, projection_axes=projection_axes, **fp_kwargs
