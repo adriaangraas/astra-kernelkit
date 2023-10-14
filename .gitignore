@@ -3,5 +3,5 @@
 /*.egg-info
 /paper
 /dist
-/docs/_*
+/docs/_build
 /docs/*/_autosummary
