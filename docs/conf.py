@@ -19,7 +19,7 @@ copyright = '2023, ASTRA Toolbox & ASTRA Toolbox contributors'
 author = 'Adriaan Graas'
 
 # The full version, including alpha/beta/rc tags
-release = "0.1.0"
+release = "1.0.0-alpha.2"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -46,6 +46,7 @@ html_theme_options = {
     "repository_url": "https://github.com/adriaangraas/astra-kernelkit",
     "use_repository_button": True,
 }
+html_css_files = ["custom.css"]
 
 autosummary_generate = True
 
