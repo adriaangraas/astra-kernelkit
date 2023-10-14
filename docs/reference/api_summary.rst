@@ -77,7 +77,7 @@ Operator-style algorithm building blocks:
    kernelkit.XrayTransform
 
 
-Miscallaneous
+Miscellaneous
 -------------
 
 Helpers for cone and Fourier-based algorithms:
