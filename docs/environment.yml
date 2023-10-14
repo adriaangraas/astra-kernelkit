@@ -4,4 +4,4 @@ channels:
 dependencies:
   - myst-parser
   - sphinx
-  - sphinx-book-them
+  - sphinx-book-theme
