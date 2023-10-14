@@ -13,8 +13,6 @@ Geometries
    kernelkit.resolve_volume_geometry
    kernelkit.experimental.suggest_volume_extent
    kernelkit.Detector
-   kernelkit.GeometrySequence
-   kernelkit.GeometrySequence.DetectorSequence
    kernelkit.rotate
    kernelkit.rotate_
    kernelkit.scale
@@ -46,10 +44,11 @@ Projectors
       :maxdepth: 1
 
    kernelkit.BaseProjector
-   kernelkit.ConeBackprojector
-   kernelkit.ConeProjector
-   kernelkit.toolbox_support.ConeProjectorAdapter
-   kernelkit.toolbox_support.ConeBackprojectorAdapter
+   kernelkit.BackProjector
+   kernelkit.ForwardProjector
+   kernelkit.toolbox_support.BaseProjector
+   kernelkit.toolbox_support.ForwardProjector
+   kernelkit.toolbox_support.BackProjector
 
 
 Algorithms

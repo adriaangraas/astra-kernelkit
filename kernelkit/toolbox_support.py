@@ -295,7 +295,7 @@ class BaseProjectorAdapter(BaseProjector, ABC):
         return self._projections if mode == "FP" else self._volume
 
 
-class ForwardProjectorAdapter(BaseProjectorAdapter):
+class ForwardProjector(BaseProjectorAdapter):
     """Adapter for ASTRA forward projectors."""
 
     def __call__(self, additive=False):
@@ -315,7 +315,7 @@ class ForwardProjectorAdapter(BaseProjectorAdapter):
         super().directFPBP("FP", additive=additive)
 
 
-class BackprojectorAdapter(BaseProjectorAdapter):
+class BackProjector(BaseProjectorAdapter):
     """Adapter for ASTRA backprojectors."""
 
     def __call__(self, additive=False):
