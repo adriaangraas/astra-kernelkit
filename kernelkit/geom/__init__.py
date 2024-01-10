@@ -148,7 +148,7 @@ def resolve_volume_geometry(
                 continue
 
             if verbose:
-                print(f"Attempting {dims[d]}...")
+                print(f"Attempting dimension {d}...")
             attempt = _solve(shape[d], vol_ext_min[d], vol_ext_max[d], vox_sz[d], d)
             if attempt:
                 shape[d] = attempt[0]
