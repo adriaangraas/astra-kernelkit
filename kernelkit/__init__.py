@@ -10,4 +10,6 @@ from . import kernel
 from . import kernels
 from . import experimental
 from . import processing
-from . import toolbox_support
+
+# don't import automatically to avoid ASTRA dependency
+# from . import toolbox_support
