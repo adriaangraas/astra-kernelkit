@@ -181,33 +181,36 @@ class XrayTransform(ProjectorOperator):
 
         Notes
         -----
-        If `astra_compat` is True, the `volume_axes` and `projection_axes`
+        If `use_toolbox` is True, the `volume_axes` and `projection_axes`
         must be set to (2, 1, 0) and (1, 0, 2), respectively.
         """
         fp_kwargs = fp_kwargs or {}
         bp_kwargs = bp_kwargs or {}
         if use_toolbox:
-            from kernelkit.toolbox_support import (
-                ForwardProjector,
-                BackProjector,
-            )
+            import kernelkit.toolbox_support
 
             if projection_axes != (1, 0, 2):
                 raise ValueError(
                     "ASTRA Toolbox compatible projectors can only"
                     " be used with `projection_axes=(1, 0, 2)`."
                     " Simply set `projection_axes=(1, 0, 2)` and"
-                    " transpose the input."
+                    " transpose the input if necessary."
                 )
             if volume_axes != (2, 1, 0):
                 raise ValueError(
                     "ASTRA Toolbox compatible projectors can only"
                     " be used with `volume_axes=(2, 1, 0)`. "
                     " Simply set `volume_axes=(2, 1, 0)` and "
-                    " transpose the input."
+                    " transpose the input if necessary."
                 )
-            projector = ForwardProjector(**fp_kwargs)
-            backprojector = BackProjector(**bp_kwargs)
+            if fp_kwargs or bp_kwargs:
+                raise ValueError(
+                    "ASTRA Toolbox projectors do not accept any additional "
+                    "`fp_kwargs` or `bp_kwargs`"
+                )
+
+            projector = kernelkit.toolbox_support.ForwardProjector()
+            backprojector = kernelkit.toolbox_support.BackProjector()
         else:
             projector = ForwardProjector(
                 volume_axes=volume_axes, projection_axes=projection_axes, **fp_kwargs
