@@ -55,7 +55,7 @@ def copy_to_texture(
         Array to be used in the texture. Must be pitched when `type` is
         'pitch2d'.
     texture_type : str, optional
-        Type of texture to be created. Can be 'array' or 'pitch2d'.
+        Type of texture to be created. Can be 'array', 'array2d', or 'pitch2d'.
         Defaults to 'array'. An 'array' texture may be faster, but requires
         the array to be copied to a CUDA array first, which increases memory
         usage.
@@ -90,7 +90,7 @@ def copy_to_texture(
         cuda_array = txt.CUDAarray(
             _channel_desc, *reversed(array.shape), 1 if layered else 0
         )
-        cuda_array.copy_from(array, cp.cuda.get_current_stream())
+        cuda_array.copy_from(array, cp.cuda.get_current_stream())  # asynchronous copy
         resource_desc = txt.ResourceDescriptor(cudaResourceTypeArray, cuArr=cuda_array)
         return txt.TextureObject(resource_desc, _texture_desc_3d)
     elif texture_type.lower() == "pitch2d":
