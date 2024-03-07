@@ -71,13 +71,13 @@ def copy_to_texture(
     if not (isinstance(array, cp.ndarray) or isinstance(array, np.ndarray)):
         raise TypeError(f"Expected a NumPy or CuPy array, got {type(array)} instead.")
 
-    if not array.flags["C_CONTIGUOUS"]:
-        raise ValueError("Array must be C-contiguous.")
-
     if not array.dtype == cp.float32:
         raise ValueError(f"Array must be of type float32, got {array.dtype} instead.")
 
     if texture_type.lower() == "array" or texture_type.lower() == "array2d":
+        if not array.flags["C_CONTIGUOUS"]:
+            raise ValueError("Array must be C-contiguous.")
+
         assert (
             array.ndim == 2
             and texture_type.lower() == "array2d"
@@ -97,6 +97,9 @@ def copy_to_texture(
         assert array.ndim == 2
         array_base = array.base if array.base is not None else array
         assert array_base.ndim == 2
+        if not array_base.flags["C_CONTIGUOUS"]:
+            raise ValueError("Base array must be C-contiguous.")
+
         if not ispitched(array_base):
             raise ValueError(
                 "Array data `array.base` needs to have pitched "
