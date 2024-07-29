@@ -1,5 +1,8 @@
 __version__ = "0.1.0"
 
+KERNELKIT_VERSION = __version__
+KERNELKIT_CUDA_SOURCES = "kernelkit.cuda"
+
 from .operator import *
 from .algo import fp, bp, fdk, sirt
 from .data import *

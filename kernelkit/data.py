@@ -77,3 +77,39 @@ def aspitched(array, xp=None):
     assert vw.flags.owndata is False
     assert vw.base is pitched_array
     return vw
+
+
+def pitched_like(array, xp=None, fill=None):
+    """Returns an empty array of same dimensions and same pitched base.
+
+    Parameters
+    ----------
+    array : array-like
+        The pitched array to get the pitched shape of.
+    xp : array module, optional
+        Array module used for the new array in the pitched shape. If
+        `None`, the module of the given array is used.
+    fill : scalar, optional
+        Value to fill the array with. When `None`, the array is not filled.
+        Defaults to `None`.
+
+    Notes
+    -----
+    The purpose of this function is to avoid a copy when creating a new array
+    with the same shape and pitched base as another array.
+    """
+    if xp is None: # `xp` is the output array module
+        xp = cp.get_array_module(array)
+
+    if not ispitched(array):
+        raise ValueError("Input array needs to be pitched.")
+
+    # override shape, and don't take the base shape
+    # the input base could be much larger (e.g., (angles, row, columns)) while
+    # the desired view requires a smaller base (e.g., (row, columns))
+    base = xp.empty_like(array.base,
+                         shape=pitched_shape(array))
+    view = base[..., :array.shape[-1]]  # return the non-pitched view
+    if fill is not None:
+        view.fill(fill)
+    return view

@@ -1,3 +1,4 @@
+import importlib.resources
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from importlib import resources
@@ -165,23 +166,13 @@ class cuda_float4:
 class BaseKernel(ABC):
     """Abstract base class for CUDA kernels"""
 
-    FLOAT_DTYPE = cp.float32
-    SUPPORTED_DTYPES = [cp.float32]
-
     @abstractmethod
-    def __init__(self, resource: str, package="kernelkit.cuda"):
-        """Initialize the kernel
+    def __init__(self, cuda_source: str):
+        """Initialize the kernel"""
 
-        Parameters
-        ----------
-        resource : str
-            Name of the resource file containing the kernel source
-        package : str
-            Name of the package where the resource file is located
-        """
-        # we cannot load the source immediately because some template
-        # arguments may only be known at call time.
-        self._cuda_source = resources.read_text(package=package, resource=resource)
+        # we cannot parse the source immediately because some Jinja2 template
+        # arguments may only be known at compile time.
+        self._cuda_source = cuda_source
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> type(None):
@@ -195,7 +186,9 @@ class BaseKernel(ABC):
         return self._cuda_source
 
     def _compile(
-        self, name_expressions: Sequence[str], template_kwargs: dict
+        self,
+        name_expressions: Sequence[str],
+        template_kwargs: dict = None
     ) -> cp.RawModule:
         """Renders Jinja2 template and imports kernel in CuPy
 
@@ -207,6 +200,7 @@ class BaseKernel(ABC):
             Dictionary of template arguments to be rendered in the source code
             using Jinja2
         """
+        template_kwargs = template_kwargs or {}
         if len(template_kwargs) == 0:
             print(f"Compiling kernel {self.__class__.__name__}...")
         else:

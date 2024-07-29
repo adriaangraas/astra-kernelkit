@@ -1,18 +1,25 @@
 import copy
+from importlib import resources
 from math import ceil
 from typing import Sequence
 
 import numpy as np
 import cupy as cp
 
+from kernelkit import KERNELKIT_CUDA_SOURCES
 from kernelkit.geom import normalize_
-from kernelkit.geom.proj import GeometrySequence
+from kernelkit.geom.proj import ProjectionGeometrySequence
 from kernelkit.geom.vol import VolumeGeometry
-from kernelkit.kernel import BaseKernel, copy_to_symbol
+from kernelkit.kernel import (BaseKernel, copy_to_symbol,
+                              KernelMemoryUnpreparedException,
+                              KernelNotCompiledException)
 
 
 class RayDrivenConeFP(BaseKernel):
     """Ray-driven conebeam forward projection kernel."""
+
+    FLOAT_DTYPE = cp.float32
+    SUPPORTED_DTYPES = [cp.float32]
 
     slices_per_thread = 16
     pixels_in_x_block = 32
@@ -24,7 +31,6 @@ class RayDrivenConeFP(BaseKernel):
         slices_per_block: int = None,
         volume_axes: tuple = (0, 1, 2),
         projection_axes: tuple = (0, 1, 2),
-        *args,
     ):
         """Conebeam forward projection kernel.
 
@@ -59,8 +65,15 @@ class RayDrivenConeFP(BaseKernel):
             self.slices_per_block = slices_per_block
         self._vol_axs = volume_axes
         self._proj_axs = projection_axes
-        self._module: cp.RawModule
-        super().__init__("cone_fp.cu", *args)
+        self._params_are_set: bool = False
+
+        cuda_source = (
+            resources
+            .files(KERNELKIT_CUDA_SOURCES)
+            .joinpath("cone_fp.cu")
+            .read_text()
+        )
+        super().__init__(cuda_source)
 
     @property
     def volume_axes(self) -> tuple:
@@ -74,13 +87,14 @@ class RayDrivenConeFP(BaseKernel):
     def _get_names() -> tuple:
         return f"cone_fp<DIR_X>", f"cone_fp<DIR_Y>", f"cone_fp<DIR_Z>"
 
-    def compile(self, nr_projs):
+    def compile(self,
+                max_projs: int = 1024):
         return self._compile(
             name_expressions=self._get_names(),
             template_kwargs={
                 "slices_per_thread": self.slices_per_thread,
                 "pixels_per_thread": self.pixels_in_y_thread,
-                "nr_projs_global": nr_projs,
+                "nr_projs_global": max_projs,
                 "volume_axes": self._vol_axs,
                 "projection_axes": self._proj_axs,
             },
@@ -89,9 +103,10 @@ class RayDrivenConeFP(BaseKernel):
     def __call__(
         self,
         volume_texture: cp.cuda.texture.TextureObject,
-        projection_geometry: Sequence,
+        projection_geometry: ProjectionGeometrySequence,
         volume_geometry: VolumeGeometry,
         projections,
+        projections_pitch: tuple | None = None
     ):
         """Forward projection with conebeam geometry.
 
@@ -108,14 +123,15 @@ class RayDrivenConeFP(BaseKernel):
             data. Either provided as a list of 2D arrays or
             as a single 3D array. The shape of the array-like object must be
             according to the `projection_axes` specified in the constructor.
+        projections_pitch : tuple, optional
+            Dimensions tuple of the pitched memory. Defaults to `None`, meaning
+            that the dimensions of the projections and detector are used. Note
+            the first dimension is the pitch of projections, the second the
+            pitch of rows, and the third the pitch of columns, even though
+            the projections may be stored in a different axis order. E.g.,
+            if projection axis is `(0, 2, 1)`, the pitched dimensions must be
+            `(angles, cols + padding, rows)`.
         """
-        if isinstance(projection_geometry, list):
-            projection_geometry = GeometrySequence.fromList(projection_geometry)
-        else:
-            projection_geometry = copy.deepcopy(projection_geometry)
-
-        volume_shape = volume_geometry.shape
-
         assert volume_texture is not None
         if isinstance(projections, list):
             if self._proj_axs[0] == 0:
@@ -155,22 +171,34 @@ class RayDrivenConeFP(BaseKernel):
                         f"{self.SUPPORTED_DTYPES}, but got {arr.dtype}."
                     )
 
-        normalize_(projection_geometry, volume_geometry)
-
-        if not hasattr(self, "_module"):
-            self._module = self.compile(len(projection_geometry))
+        if not self.is_compiled:
+            raise KernelNotCompiledException(
+                "Please compile the kernel with `compile()`."
+            )
         funcs = [self._module.get_function(n) for n in self._get_names()]
-        self._upload_geometries(projection_geometry, self._module)
+
+        if not self._params_are_set:
+            raise KernelMemoryUnpreparedException(
+                "Please set the projection geometry with `set_params()`."
+            )
+
         output_scale = self._output_scale(volume_geometry.voxel_size)
+
         rows = int(projection_geometry.detector.rows[0])
         cols = int(projection_geometry.detector.cols[0])
         blocks_x = ceil(rows / self.pixels_in_x_block)
         blocks_y = ceil(cols / self.pixels_in_y_thread)
+        volume_shape = volume_geometry.shape
+
+        if projections_pitch is None:
+            projections_pitch = (len(projections), rows, cols)
+
 
         def _launch(start: int, stop: int, axis: int):
             """Launch kernel for a range of projections"""
             # slice volume in the axis of the ray direction
             for i in range(0, volume_shape[axis], self.slices_per_thread):
+                assert projections.dtype == cp.int64
                 funcs[axis](
                     (blocks_x, blocks_y, stop - start),  # grid
                     (self.pixels_in_x_block,),  # threads
@@ -183,6 +211,7 @@ class RayDrivenConeFP(BaseKernel):
                         len(projection_geometry),
                         rows,
                         cols,
+                        *projections_pitch,
                         *cp.float32(output_scale[axis]),
                     ),
                 )
@@ -238,27 +267,71 @@ class RayDrivenConeFP(BaseKernel):
         return output_scale
 
     @staticmethod
-    def _upload_geometries(geometries: GeometrySequence, module: cp.RawModule):
+    def geoms2params(
+        projection_geometry: Sequence[ProjectionGeometrySequence],
+        volume_geometry: VolumeGeometry,
+    ):
+        """Converts geometries to kernel parameters.
+
+        Parameters
+        ----------
+        pg : Sequence of ProjectionGeometry
+            Geometry of the projection data.
+        volume_geometry : VolumeGeometry
+            Geometry of the reconstruction volume.
+
+        Returns
+        -------
+        tuple
+            Parameters for the kernel.
+        """
+        pg = projection_geometry
+
+        if isinstance(pg, list):
+            pg = ProjectionGeometrySequence.fromList(pg)
+            xp = pg.xp
+        else:
+            pg = copy.deepcopy(pg)
+            xp = pg.xp
+
+        normalize_(pg, volume_geometry)
+
+        src = xp.ascontiguousarray(pg.source_position.T)
+        ext_min = xp.ascontiguousarray(pg.detector_extent_min.T)
+        u = xp.ascontiguousarray(
+            pg.u.T * pg.detector.pixel_width)
+        v = xp.ascontiguousarray(
+            pg.v.T * pg.detector.pixel_height)
+        return (src[0], src[1], src[2],
+                ext_min[0], ext_min[1], ext_min[2],
+                u[0], u[1], u[2],
+                v[0], v[1], v[2])
+
+    def set_params(self, params):
         """Transfer geometries to device as structure of arrays."""
+
         # TODO(Adriaan): maybe make a mapping between variables
-        xp = geometries.xp
-        src = xp.ascontiguousarray(geometries.source_position.T)
-        ext_min = xp.ascontiguousarray(geometries.detector_extent_min.T)
-        u = xp.ascontiguousarray(geometries.u.T * geometries.detector.pixel_width)
-        v = xp.ascontiguousarray(geometries.v.T * geometries.detector.pixel_height)
-        srcsX, srcsY, srcsZ = src[0], src[1], src[2]
-        detsSX, detsSY, detsSZ = ext_min[0], ext_min[1], ext_min[2]
-        dUX, dUY, dUZ = u[0], u[1], u[2]
-        dVX, dVY, dVZ = v[0], v[1], v[2]
-        copy_to_symbol(module, "srcsX", srcsX)
-        copy_to_symbol(module, "srcsY", srcsY)
-        copy_to_symbol(module, "srcsZ", srcsZ)
-        copy_to_symbol(module, "detsSX", detsSX)
-        copy_to_symbol(module, "detsSY", detsSY)
-        copy_to_symbol(module, "detsSZ", detsSZ)
-        copy_to_symbol(module, "detsUX", dUX)
-        copy_to_symbol(module, "detsUY", dUY)
-        copy_to_symbol(module, "detsUZ", dUZ)
-        copy_to_symbol(module, "detsVX", dVX)
-        copy_to_symbol(module, "detsVY", dVY)
-        copy_to_symbol(module, "detsVZ", dVZ)
+        assert [len(params[0]) == len(p) for p in params]
+        if len(params[0]) > self._compiled_template_kwargs["nr_projs_global"]:
+            raise ValueError(
+                f"Number of projections, {len(params) // 12}, exceeds the "
+                "the maximum of the compiled kernel, namely "
+                f"{self._compiled_template_kwargs['nr_projs_global']}. "
+                "Please recompile the kernel with a higher "
+                "`max_projs`."
+            )
+
+        m = self._module
+        copy_to_symbol(m, "srcsX", params[0])
+        copy_to_symbol(m, "srcsY", params[1])
+        copy_to_symbol(m, "srcsZ", params[2])
+        copy_to_symbol(m, "detsSX", params[3])
+        copy_to_symbol(m, "detsSY", params[4])
+        copy_to_symbol(m, "detsSZ", params[5])
+        copy_to_symbol(m, "detsUX", params[6])
+        copy_to_symbol(m, "detsUY", params[7])
+        copy_to_symbol(m, "detsUZ", params[8])
+        copy_to_symbol(m, "detsVX", params[9])
+        copy_to_symbol(m, "detsVY", params[10])
+        copy_to_symbol(m, "detsVZ", params[11])
+        self._params_are_set = True

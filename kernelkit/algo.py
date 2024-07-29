@@ -5,6 +5,7 @@ import cupyx as cpx
 import numpy as np
 from tqdm import tqdm
 
+from kernelkit.data import aspitched, pitched_like
 from kernelkit.geom.proj import ProjectionGeometry
 from kernelkit.geom.vol import VolumeGeometry
 from kernelkit.kernel import BaseKernel
@@ -265,12 +266,9 @@ def sirt(
         three arguments: the iteration number, the volume, and the residual.
         Default is None.
     residual_every : int, optional
-        How often to compute the residual. Default is 10. Note that computing
-        the residual is expensive and may slow down the reconstruction. It is
-        best to set this value conservatively.
-    stream : cupy.cuda.Stream, optional
-        The CUDA stream to use. By default, a new stream is created and used
-        until the function returns.
+        How often to compute the MSE residual for display. Default is every 10
+        iterations. Note that computing the residual is expensive and may slow
+        down the reconstruction. It is best to set this value conservatively.
     """
     if len(projections) != len(projection_geometry):
         raise ValueError("Number of projections does not match number of geometries.")
@@ -278,7 +276,8 @@ def sirt(
     xp_vol = cp
 
     # prevent copying if already in GPU memory, otherwise copy to GPU
-    y = [xp_proj.array(p, copy=False) for p in projections]
+    # y = [xp_proj.array(p, copy=False) for p in projections]
+    y = [aspitched(p, xp=xp_proj) for p in projections]
     x = xp_vol.zeros(volume_geometry.shape, cp.float32)  # output volume
     x_tmp = xp_vol.ones_like(x)
 
@@ -318,7 +317,7 @@ def sirt(
 
     # compute scaling matrix C
     # y_tmp = [aspitched(cp.ones_like(p)) for p in y]
-    y_tmp = [xp_proj.ones_like(p) for p in y]  # intermediate variable
+    y_tmp = [pitched_like(p, xp_proj, fill=1.) for p in y]  # intermediate variable
     C = A_T(y_tmp)
     xp_vol.divide(1.0, C, out=C)  # TODO(Adriaan): there is no `where=` in CuPy
     C[C == xp_vol.infty] = 0.0

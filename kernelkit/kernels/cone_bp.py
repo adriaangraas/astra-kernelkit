@@ -1,13 +1,15 @@
 import copy
 from enum import Enum
+from importlib import resources
 from typing import Any, Sequence
 
 import cupy as cp
 from cupy.cuda.texture import TextureObject
 import numpy as np
 
+from kernelkit import KERNELKIT_CUDA_SOURCES
 from kernelkit.geom import normalize_
-from kernelkit.geom.proj import GeometrySequence
+from kernelkit.geom.proj import ProjectionGeometrySequence
 from kernelkit.geom.vol import VolumeGeometry
 from kernelkit.kernel import (
     KernelMemoryUnpreparedException,
@@ -68,7 +70,14 @@ class VoxelDrivenConeBP(BaseKernel):
         kernelkit.kernel.VoxelDrivenConeFP : Conebeam forward projection kernel
         kernelkit.kernel.BaseKernel : Base class for CUDA kernels
         """
-        super().__init__("cone_bp.cu")
+        cuda_source = (
+            resources
+            .files(KERNELKIT_CUDA_SOURCES)
+            .joinpath("cone_bp.cu")
+            .read_text()
+        )
+        super().__init__(cuda_source)
+
         if voxels_per_block is not None and len(voxels_per_block) != 3:
             raise ValueError("`voxels_per_block` must have 3 elements.")
         self._vox_block = (
@@ -256,8 +265,9 @@ class VoxelDrivenConeBP(BaseKernel):
             nr_projs = dims[self._proj_axs[0]]
         else:
             raise ValueError(
-                "Please give in an array of pointers to "
-                "TextureObject, or one 3D TextureObject."
+                f"Please give in an array of pointers to "
+                f"TextureObject, or one 3D TextureObject. Given is a "
+                f"'{type(textures).__name__}'."
             )
 
         if not self._params_are_set:
@@ -314,11 +324,11 @@ class VoxelDrivenConeBP(BaseKernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
-        if isinstance(projection_geometry, GeometrySequence):
+        if isinstance(projection_geometry, ProjectionGeometrySequence):
             geom_seq = copy.deepcopy(projection_geometry)
         else:
             # list, tuple, or ndarray
-            geom_seq = GeometrySequence.fromList(projection_geometry)
+            geom_seq = ProjectionGeometrySequence.fromList(projection_geometry)
 
         xp = geom_seq.xp
         normalize_(geom_seq, volume_geometry)

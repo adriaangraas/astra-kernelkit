@@ -103,6 +103,9 @@ __global__ void cone_fp(
     unsigned int projs,
     unsigned int rows,
     unsigned int cols,
+    unsigned int projsPitch,
+    unsigned int rowsPitch,
+    unsigned int colsPitch,
     float scale1,
     float scale2,
     float outputScale
@@ -140,7 +143,6 @@ __global__ void cone_fp(
     const float dSZ = detsSZ[proj] + .5f * dUZ + .5f * dVZ;
 
     for (int r = row; r < endRow; ++r) {
-//        printf("row %d \n ", row);
         for (int c = col; c < endCol; ++c) {
             // Trace the ray through a slice of the volume.
             const float detX = dSX + c * dUX + r * dVX;
@@ -150,13 +152,17 @@ __global__ void cone_fp(
             /*        (x)   ( 1)       ( 0) *
              * ray:   (y) = (ay) * x + (by) *
              *        (z)   (az)       (bz) */
-            const float a1 = (C::y(sX, sY, sZ) - C::y(detX, detY, detZ)) / (C::x(sX, sY, sZ) - C::x(detX, detY, detZ));
-            const float a2 = (C::z(sX, sY, sZ) - C::z(detX, detY, detZ)) / (C::x(sX, sY, sZ) - C::x(detX, detY, detZ));
+            const float a1 = (C::y(sX, sY, sZ) - C::y(detX, detY, detZ))
+                             / (C::x(sX, sY, sZ) - C::x(detX, detY, detZ));
+            const float a2 = (C::z(sX, sY, sZ) - C::z(detX, detY, detZ))
+                             / (C::x(sX, sY, sZ) - C::x(detX, detY, detZ));
             const float b1 = C::y(sX, sY, sZ) - a1 * C::x(sX, sY, sZ);
             const float b2 = C::z(sX, sY, sZ) - a2 * C::x(sX, sY, sZ);
+
             const int nSlices = C::nSlices(voxX, voxY, voxZ);
             const int nDim1 = C::nDim1(voxX, voxY, voxZ);
             const int nDim2 = C::nDim2(voxX, voxY, voxZ);
+
             float x = offsetSlice + .5f; // ray direction
             float y = a1 * (offsetSlice - .5f * nSlices + .5f) + b1 + .5f * nDim1;
             float z = a2 * (offsetSlice - .5f * nSlices + .5f) + b2 + .5f * nDim2;
@@ -179,7 +185,7 @@ __global__ void cone_fp(
              *  sqrt(a1 * a1 + a2 * a2 + 1.0f) * outputScale; */
             val *= sqrt(a1 * a1 * scale1 + a2 * a2 * scale2 + 1.f);
             // printf("row %d col %d rows %d cols %d\n %d\n ", row, col, rows, cols, val);
-            {% set n = ['projs', 'rows', 'cols'] %}
+            {% set n = ['projsPitch', 'rowsPitch', 'colsPitch'] %}
             {% set i = ['proj', 'r', 'c'] %}
             projections[{{i[projection_axes[0]]}}]
                        [{{i[projection_axes[1]]}} * {{n[projection_axes[2]]}} + {{i[projection_axes[2]]}}]

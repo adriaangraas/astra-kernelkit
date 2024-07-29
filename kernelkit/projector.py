@@ -5,8 +5,9 @@ from abc import ABC, abstractmethod
 import cupy as cp
 import numpy as np
 
-from kernelkit.data import ispitched
-from kernelkit.geom.proj import GeometrySequence, ProjectionGeometry
+from kernelkit.data import ispitched, pitched_shape
+from kernelkit.geom.proj import Beam, ProjectionGeometrySequence, \
+    ProjectionGeometry
 from kernelkit.geom.vol import VolumeGeometry
 from kernelkit.kernel import copy_to_texture, BaseKernel
 from kernelkit.kernels.cone_bp import VoxelDrivenConeBP
@@ -38,7 +39,7 @@ class ProjectionsNotSetError(AttributeError):
 
 
 class BaseProjector(ABC):
-    """Base class for projectors.
+    """Interface-like base class for projectors.
 
     Notes
     -----
@@ -135,7 +136,7 @@ class Projector(BaseProjector, ABC):
         """
         self._K = kernel
         self._proj_geom: list[ProjectionGeometry]
-        self._proj_geom_seq: GeometrySequence
+        self._proj_geom_seq: ProjectionGeometrySequence
         self._vol_geom: VolumeGeometry
 
     @property
@@ -159,18 +160,27 @@ class Projector(BaseProjector, ABC):
     @projection_geometry.setter
     def projection_geometry(self, value: list[ProjectionGeometry]):
         for p in value:
-            if p.beam != ProjectionGeometry.Beam.CONE.value:
+            if p.beam != Beam.CONE.value:
                 raise NotImplementedError(
                     "Only conebeam geometries are supported at the moment."
                 )
         self._proj_geom = value
 
-        # convert to GeometrySequence for efficient conversion to kernel params
-        if not isinstance(value, GeometrySequence):
-            seq = GeometrySequence.fromList(self._proj_geom)
+        # convert to ProjectionGeometrySequence for efficient conversion to kernel params
+        if not isinstance(value, ProjectionGeometrySequence):
+            seq = ProjectionGeometrySequence.fromList(self._proj_geom)
         else:
             seq = value
+
         self._proj_geom_seq = seq
+
+        try:
+            self._params = self._K.geoms2params(
+                self._proj_geom_seq, self.volume_geometry
+            )
+            self._K.set_params(self._params)
+        except (VolumeGeometryNotSetError,):
+            pass
 
     @projection_geometry.deleter
     def projection_geometry(self):
@@ -189,7 +199,22 @@ class Projector(BaseProjector, ABC):
 
     @volume_geometry.setter
     def volume_geometry(self, value: VolumeGeometry):
+        if not value.has_isotropic_voxels():
+            raise NotImplementedError(
+                f"`{self.__class__.__name__}` is not tested with anisotropic "
+                "voxels yet."
+            )
+
         self._vol_geom = value
+
+        try:
+            self._params = self._K.geoms2params(
+                self._proj_geom_seq, self.volume_geometry
+            )
+            self._K.set_params(self._params)
+        except (ProjectionGeometryNotSetError, AttributeError) as e:
+            if e.name != "_proj_geom_seq":
+                raise
 
     @volume_geometry.deleter
     def volume_geometry(self):
@@ -221,7 +246,8 @@ class ForwardProjector(Projector):
             (0, 1, 2).
         """
         K = (
-            RayDrivenConeFP(volume_axes=volume_axes, projection_axes=projection_axes)
+            RayDrivenConeFP(volume_axes=volume_axes,
+                            projection_axes=projection_axes)
             if kernel is None
             else kernel
         )
@@ -229,6 +255,9 @@ class ForwardProjector(Projector):
         self._projs: cp.ndarray | list[cp.ndarray]
         self._vol_ref: cp.ndarray
         self._texture: cp.cuda.TextureObject
+
+        if not self._K.is_compiled:
+            self._K.compile()
 
     @property
     def volume(self) -> cp.ndarray:
@@ -281,7 +310,6 @@ class ForwardProjector(Projector):
         if not isinstance(value, cp.ndarray) and not isinstance(value, list):
             raise TypeError("Projections must be a `cp.ndarray` or `list`.")
 
-        # if projections already exist, throw an error
         self._projs = value
 
         proj_ptrs = [p.data.ptr for p in self._projs]
@@ -298,6 +326,12 @@ class ForwardProjector(Projector):
             for i, ptr in enumerate(proj_ptrs):
                 self._proj_ptrs[i] = ptr
 
+        self._pitched_proj_shape = None
+        if isinstance(self._projs, list):
+            if ispitched(self._projs[0]):
+                self._pitched_proj_shape = (
+                    len(self._projs), *pitched_shape(self._projs[0]))
+
     def __call__(self, additive: bool = False):
         """Projects the volume into the projections.
 
@@ -307,8 +341,14 @@ class ForwardProjector(Projector):
             If True, the projections are updated, rather than overwritten.
         """
         if not additive:
-            [p.fill(0.0) for p in self._projs]
-        self._K(self._texture, self._proj_geom_seq, self._vol_geom, self._proj_ptrs)
+            if isinstance(self._projs, cp.ndarray):
+                self._projs.fill(0.0)  # much faster than list below
+            else:
+                # TODO(Adriaan): slow. Faster fill in the kernel?
+                [p.fill(0.0) for p in self._projs]
+
+        self._K(self._texture, self._proj_geom_seq, self._vol_geom,
+                self._proj_ptrs, projections_pitch=self._pitched_proj_shape)
 
 
 class BackProjector(Projector):
@@ -364,36 +404,6 @@ class BackProjector(Projector):
         self._texture_2d_objects: list[cp.cuda.TextureObject]
         self._vol: Any
 
-    @Projector.volume_geometry.setter
-    def volume_geometry(self, value: VolumeGeometry):
-        if not value.has_isotropic_voxels():
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}` is not tested with anisotropic "
-                "voxels yet."
-            )
-        Projector.volume_geometry.fset(self, value)
-        try:
-            self._params = self._K.geoms2params(
-                self._proj_geom_seq, self.volume_geometry
-            )
-            self._K.set_params(self._params)
-        except (ProjectionGeometryNotSetError, AttributeError) as e:
-            if e.name == "_proj_geom_seq":
-                pass
-            else:
-                raise
-
-    @Projector.projection_geometry.setter
-    def projection_geometry(self, value: list[ProjectionGeometry]):
-        Projector.projection_geometry.fset(self, value)
-        try:
-            self._params = self._K.geoms2params(
-                self._proj_geom_seq, self.volume_geometry
-            )
-            self._K.set_params(self._params)
-        except (VolumeGeometryNotSetError,):
-            pass
-
     @property
     def volume(self) -> cp.ndarray:
         """Returns the reconstruction volume."""
@@ -408,7 +418,8 @@ class BackProjector(Projector):
     def volume(self, value: cp.ndarray):
         """Sets the reconstruction volume."""
         if hasattr(self, "volume_geometry"):
-            expected_shp = (self._vol_geom.shape[i] for i in self._K.volume_axes)
+            expected_shp = (self._vol_geom.shape[i] for i in
+                            self._K.volume_axes)
             if value.shape != tuple(expected_shp):
                 raise ValueError(
                     f"Volume shape {value.shape} does not match volume "
@@ -441,7 +452,8 @@ class BackProjector(Projector):
             else:
                 raise RuntimeError
         except AttributeError:
-            raise ProjectionsNotSetError("No projections set in the projector.")
+            raise ProjectionsNotSetError(
+                "No projections set in the projector.")
 
     @projections.setter
     def projections(self, value: Any):
@@ -520,7 +532,8 @@ class BackProjector(Projector):
             if self._texture_type in ("pitch2d", "array2d"):
                 # keep a reference to avoid garbage collection
                 self._texture_2d_objects = [
-                    copy_to_texture(cp.asarray(p), self._texture_type) for p in value
+                    copy_to_texture(cp.asarray(p), self._texture_type) for p in
+                    value
                 ]
                 txt = cp.array([p.ptr for p in self._texture_2d_objects])
             elif self._texture_type in ("array", "layered"):
@@ -589,7 +602,8 @@ class BackProjector(Projector):
         elif self._K.volume_axes == (0, 1, 2):
             # returning a view (an array transpose)
             # TODO(Adriaan): think about a more sustainable solution
-            self._vol[...] = cp.reshape(self._vol, tuple(reversed(self._vol.shape))).T
+            self._vol[...] = cp.reshape(self._vol,
+                                        tuple(reversed(self._vol.shape))).T
         else:
             raise NotImplementedError(
                 "Sorry! Not yet implemented, but should"
