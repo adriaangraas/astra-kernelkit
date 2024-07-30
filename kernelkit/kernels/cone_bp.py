@@ -23,7 +23,10 @@ from kernelkit.kernel import (
 class VoxelDrivenConeBP(BaseKernel):
     """Voxel-driven conebeam backprojection kernel."""
 
-    class TextureFetching(Enum):
+    FLOAT_DTYPE = cp.float32
+    SUPPORTED_DTYPES = [cp.float32]
+
+    class InterpolationMethod(Enum):
         """Texture fetching approach.
 
         Notes
@@ -32,9 +35,10 @@ class VoxelDrivenConeBP(BaseKernel):
         the kernel) does not correspond one-on-one to texture objects.
         """
 
-        Tex3D = "3D"  # for single texture object from 3D CUDA Array
-        Tex2DLayered = "2DLayered"  # yes, for layered *3D* CUDA array, no typo
-        Tex2D = "2D"  # List of pitch2D, or list of 2D CUDA arrays
+        Tex3D = "tex3D"  # for single texture object from 3D CUDA Array
+        Tex2DLayered = "tex2DLayered"  # yes, for layered *3D* CUDA array
+        Surf2DLayered = "surf2DLayered"
+        Tex2D = "tex2D"  # List of pitch2D, or list of 2D CUDA arrays
 
     voxels_per_block = (16, 32, 6)  # ASTRA Toolbox default
     projs_per_block = 32  # ASTRA Toolbox default
@@ -101,7 +105,7 @@ class VoxelDrivenConeBP(BaseKernel):
     def compile(
         self,
         max_projs: int = 1024,
-        texture: TextureFetching | str = TextureFetching.Tex3D,
+        texture: InterpolationMethod | None | str = InterpolationMethod.Tex3D,
     ) -> cp.RawModule:
         """Compile the kernel.
 
@@ -116,28 +120,28 @@ class VoxelDrivenConeBP(BaseKernel):
             projections, but N_\theta must be smaller or equal to `max_projs`.
         texture : str, optional
             Type of texture to use. Defaults to `3D`. Can be one of the types
-            specified in `TextureFetching`.
+            specified in `InterpolationMethod`.
         """
-        if texture not in self.TextureFetching:
-            raise ValueError(f"`texture` must be one of {self.TextureFetching}.")
+        if texture is not None:
+            if texture not in self.InterpolationMethod:
+                raise ValueError(f"`texture` must be one of {self.InterpolationMethod}"
+                                 f" or `None`.")
 
-        if texture.value == self.TextureFetching.Tex2D.value:
-            if self._proj_axs[0] != 0:
-                raise ValueError(
-                    "If an array of texture pointers is given, "
-                    "the first `projection_axes` axis must be "
-                    "angles, i.e., must be 0."
-                )
-        elif texture.value in (
-            self.TextureFetching.Tex2DLayered.value,
-            self.TextureFetching.Tex3D,
-        ):
-            if self._proj_axs[0] != 0:
-                raise ValueError(
-                    "If a 3D texture is given, the first "
-                    "`projection_axes` axis must be angles, "
-                    "i.e., must be 0."
-                )
+            if texture.value == self.InterpolationMethod.Tex2D.value:
+                if self._proj_axs[0] != 0:
+                    raise ValueError(
+                        "If an array of texture pointers is given, the first "
+                        "`projection_axes` axis must be angles, i.e., must be 0."
+                    )
+            elif texture.value in (
+                self.InterpolationMethod.Tex2DLayered.value,
+                self.InterpolationMethod.Tex3D,
+            ):
+                if self._proj_axs[0] != 0:
+                    raise ValueError(
+                        "If a 3D texture is given, the first `projection_axes` "
+                        "axis must be angles, i.e., must be 0."
+                    )
 
         self._compile(
             name_expressions=("cone_bp",),
@@ -147,7 +151,7 @@ class VoxelDrivenConeBP(BaseKernel):
                 "nr_vxls_block_z": self._vox_block[2],
                 "nr_projs_block": self._projs_block,
                 "nr_projs_global": max_projs,
-                "texture": texture.value,
+                "texture": texture.value if texture is not None else texture,
                 "volume_axes": self._vol_axs,
                 "projection_axes": self._proj_axs,
             },
@@ -224,16 +228,16 @@ class VoxelDrivenConeBP(BaseKernel):
         if isinstance(textures, cp.ndarray):
             if not textures.dtype == cp.int64:
                 raise ValueError(
-                    "Please give in an array of pointers to "
-                    "TextureObject, or one 3D TextureObject."
+                    f"Please give in an array of int64 pointers to "
+                    f"TextureObject. The given dtype is {textures.dtype}."
                 )
             assert (
                 self._compiled_template_kwargs["texture"]
-                == self.TextureFetching.Tex2D.value
+                in (self.InterpolationMethod.Tex2D.value, None)
             ), (
                 "Kernel was compiled with texture type "
                 f"{self._compiled_template_kwargs['texture']}, "
-                f"but given '{self.TextureFetching.Tex2D.value}'."
+                f"but given '{self.InterpolationMethod.Tex2D.value}'."
             )
             nr_projs = len(textures)
         elif isinstance(textures, TextureObject):
@@ -244,21 +248,21 @@ class VoxelDrivenConeBP(BaseKernel):
             if textures.ResDesc.cuArr.flags % 2 == 1:
                 assert (
                     self._compiled_template_kwargs["texture"]
-                    == self.TextureFetching.Tex2DLayered.value
+                    == self.InterpolationMethod.Tex2DLayered.value
                 ), (
                     "Kernel was compiled with texture type "
                     f"{self._compiled_template_kwargs['texture']}, "
-                    f"but given '{self.TextureFetching.Tex2DLayered.value}'."
+                    f"but given '{self.InterpolationMethod.Tex2DLayered.value}'."
                 )
             else:
                 if (
                     self._compiled_template_kwargs["texture"]
-                    != self.TextureFetching.Tex3D.value
+                    != self.InterpolationMethod.Tex3D.value
                 ):
                     raise ValueError(
                         "Kernel was compiled with texture type "
                         f"{self._compiled_template_kwargs['texture']}, "
-                        f"but given '{self.TextureFetching.Tex3D.value}'."
+                        f"but given '{self.InterpolationMethod.Tex3D.value}'."
                     )
             cuArr = textures.ResDesc.cuArr
             dims = cuArr.depth, cuArr.height, cuArr.width

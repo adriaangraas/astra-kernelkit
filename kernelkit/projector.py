@@ -369,11 +369,6 @@ class BackProjector(Projector):
         kernel : VoxelDrivenConeBP, optional
             The kernel to use for backprojection. If `None`, the default kernel
             is used.
-        texture_type : str, optional
-            The type of texture to use for the projection data. The default is
-            'array'. If 'pitch2d', the projection data is copied into
-            a pitched GPU array. Creation of 'pitch2d' is faster, but lookup
-            in 'array' texture is faster.
         """
         K = VoxelDrivenConeBP(**kernel_kwargs) if kernel is None else kernel
         if kernel is not None and len(kernel_kwargs) > 0:
@@ -390,10 +385,10 @@ class BackProjector(Projector):
                 f"one of the following: {self.TEXTURE_TYPES}."
             )
         type2texture = {
-            "pitch2d": self._K.TextureFetching.Tex2D,
-            "array2d": self._K.TextureFetching.Tex2D,
-            "array": self._K.TextureFetching.Tex3D,
-            "layered": self._K.TextureFetching.Tex2DLayered,
+            "pitch2d": self._K.InterpolationMethod.Tex2D,
+            "array2d": self._K.InterpolationMethod.Tex2D,
+            "array": self._K.InterpolationMethod.Tex3D,
+            "layered": self._K.InterpolationMethod.Tex2DLayered,
         }
         if not self._K.is_compiled:
             self._K.compile(texture=type2texture[self._texture_type])
@@ -555,16 +550,15 @@ class BackProjector(Projector):
                 # copy may be slower than creating new texture. But creating
                 # new texture may invalidate a graph?
                 for i, p in enumerate(value):
-                    with cp.cuda.Stream(non_blocking=True):
-                        if isinstance(p, np.ndarray):
-                            addr = p.ctypes.data_as(ctypes.c_void_p)
-                        else:
-                            addr = p.data.ptr
-                        (
-                            self._texture_2d_objects[
-                                i
-                            ].ResDesc.arr.data.copy_from_async(addr, p.nbytes)
-                        )
+                    if isinstance(p, np.ndarray):
+                        addr = p.ctypes.data_as(ctypes.c_void_p)
+                    else:
+                        addr = p.data.ptr
+                    (
+                        self._texture_2d_objects[
+                            i
+                        ].ResDesc.arr.data.copy_from_async(addr, p.nbytes)
+                    )
 
     @projections.deleter
     def projections(self):

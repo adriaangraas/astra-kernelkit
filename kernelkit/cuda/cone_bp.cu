@@ -37,12 +37,18 @@ struct Params {
 __constant__ Params params[{{ nr_projs_global }}];
 
 __global__ void cone_bp(
-{% if texture == '3D' or texture == '2DLayered' %}
+{% if texture == 'tex3D' or texture == 'tex2DLayered' %}
     cudaTextureObject_t projTexture,
+{% elif texture == 'surf3D' or texture == 'surf2DLayered' %}
+    cudaSurfaceObject_t projSurface,
+{% elif False %}
+    const float ** __restrict__ projections,
+    int rowsPitch,
+    int colsPitch,
 {% else %}
-    cudaTextureObject_t * projTextures,
+    const cudaTextureObject_t * __restrict__ projTextures,
 {% endif %}
-    float * volume,
+    float * __restrict__ volume,
     int start,
     int nrProjections,
     int voxelsX,
@@ -87,20 +93,27 @@ __global__ void cone_bp(
             r = __fdividef(1.f, den);
             U = numU * r;
             V = numV * r;
-{% if texture == '2DLayered' %}
+{% if texture == 'tex2DLayered' %}
 {% set ax = ['j', 'V', 'U'] %}
             float val = tex2DLayered<float>(
                 projTexture,
                 {{ ax[projection_axes[2]] }},
                 {{ ax[projection_axes[1]] }},
                 {{ ax[projection_axes[0]] }});
-{% elif texture == '2D' %}
+{% elif texture == 'surf2DLayered' %}
+{% set ax = ['j', 'V', 'U'] %}
+            float val = tex2DLayered<float>(
+                projTexture,
+                {{ ax[projection_axes[2]] }},
+                {{ ax[projection_axes[1]] }},
+                {{ ax[projection_axes[0]] }});
+{% elif texture == 'tex2D' %}
 {% set ax = ['j', 'V', 'U'] %}
             float val = tex2D<float>(
                 projTextures[{{ ax[projection_axes[0]] }}],
                 {{ ax[projection_axes[2]] }},
                 {{ ax[projection_axes[1]] }});
-{% elif texture == '3D' %}
+{% elif texture == 'tex3D' %}
 {% set ax = ['j + .5f', 'V', 'U'] %}
             float val = tex3D<float>(
                 projTexture,
