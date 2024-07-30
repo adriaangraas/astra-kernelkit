@@ -341,11 +341,14 @@ def sirt(
             p_tmp -= p  # residual
             p_tmp *= r
 
-        E = residual_every  # compute residual norm every `E`
-        if i % E == 0:  # the following operation is expensive
-            res_norm = str(sum([xp_proj.linalg.norm(p) for p in y_tmp]))
-        desc = "SIRT [" + "*" * (i % E) + "." * (E - i % E) + "]"
-        bar.set_description(f"{desc}: {res_norm})")
+        if residual_every is not None:
+            E = residual_every  # compute residual norm every `E`
+            if i % E == 0:  # the following operation is expensive
+                res_norm = str(sum([xp_proj.linalg.norm(p) for p in y_tmp]))
+            desc = "SIRT [" + "*" * (i % E) + "." * (E - i % E) + "]"
+            bar.set_description(f"{desc}: {res_norm})")
+        else:
+            bar.set_description(f"SIRT")
 
         # backproject residual into `x_tmp`, apply C
         A_T(y_tmp, out=x_tmp)
