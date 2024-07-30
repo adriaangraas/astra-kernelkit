@@ -37,49 +37,35 @@ __constant__ float detsVX[{{ nr_projs_global }}];
 __constant__ float detsVY[{{ nr_projs_global }}];
 __constant__ float detsVZ[{{ nr_projs_global }}];
 
-// x=0, y=1, z=2
-struct DIR_X {
-    __device__ inline static float nSlices(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
-         return voxX; }
-    __device__ inline static float nDim1(unsigned int volX, unsigned int voxY, unsigned int voxZ) {
-        return voxY; }
-    __device__ inline static float nDim2(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
-        return voxZ; }
-    __device__ inline static float x(float x, float y, float z) { return x; }
-    __device__ inline static float y(float x, float y, float z) { return y; }
-    __device__ inline static float z(float x, float y, float z) { return z; }
+template<int AXIS_X, int AXIS_Y, int AXIS_Z>
+struct ProjectionDirection {
+    __device__ inline static int nSlices(unsigned int voxelX, unsigned int voxelY, unsigned int voxelZ) {
+        return getAxis(voxelX, voxelY, voxelZ, AXIS_X);
+    }
+    __device__ inline static int nDim1(unsigned int voxelX, unsigned int voxelY, unsigned int voxelZ) {
+        return getAxis(voxelX, voxelY, voxelZ, AXIS_Y);
+    }
+    __device__ inline static int nDim2(unsigned int voxelX, unsigned int voxelY, unsigned int voxelZ) {
+        return getAxis(voxelX, voxelY, voxelZ, AXIS_Z);
+    }
+    __device__ inline static float x(float x, float y, float z) { return getAxis(x, y, z, AXIS_X); }
+    __device__ inline static float y(float x, float y, float z) { return getAxis(x, y, z, AXIS_Y); }
+    __device__ inline static float z(float x, float y, float z) { return getAxis(x, y, z, AXIS_Z); }
     __device__ inline static float tex(const cudaTextureObject_t& vol, float f0, float f1, float f2) {
-        return tex3D<float>(vol, f0, f1, f2); }
+        return tex3D<float>(vol,
+                            getAxis(f0, f1, f2, AXIS_X),
+                            getAxis(f0, f1, f2, AXIS_Y),
+                            getAxis(f0, f1, f2, AXIS_Z));
+    }
+private:
+    __device__ inline static float getAxis(float x, float y, float z, int axis) {
+        return (axis == 0) ? x : ((axis == 1) ? y : z);
+    }
 };
 
-// y=0, x=1, z=2
-struct DIR_Y {
-    __device__ inline static float nSlices(unsigned int volX, unsigned int voxY, unsigned int voxZ) {
-        return voxY; }
-    __device__ inline static float nDim1(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
-        return voxX; }
-    __device__ inline static float nDim2(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
-        return voxZ; }
-    __device__ inline static float x(float x, float y, float z) { return y; }
-    __device__ inline static float y(float x, float y, float z) { return x; }
-    __device__ inline static float z(float x, float y, float z) { return z; }
-    __device__ inline static float tex(const cudaTextureObject_t& vol, float f0, float f1, float f2) {
-        return tex3D<float>(vol, f0, f2, f1); } //  1 0 2
-};
-
-struct DIR_Z { // z=0, x=1, y=2
-    __device__ inline static float nSlices(unsigned int volX, unsigned int voxY, unsigned int voxZ) {
-        return voxZ; }
-    __device__ inline static float nDim1(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
-        return voxX; }
-    __device__ inline static float nDim2(unsigned int voxX, unsigned int voxY, unsigned int voxZ) {
-        return voxY; }
-    __device__ inline static float x(float x, float y, float z) { return z; }
-    __device__ inline static float y(float x, float y, float z) { return x; }
-    __device__ inline static float z(float x, float y, float z) { return y; }
-    __device__ inline static float tex(const cudaTextureObject_t& vol, float f0, float f1, float f2) {
-        return tex3D<float>(vol, f2, f0, f1); }  // 1 2 0
-};
+using DIR_X = ProjectionDirection<0, 1, 2>;
+using DIR_Y = ProjectionDirection<1, 2, 0>;
+using DIR_Z = ProjectionDirection<2, 0, 1>;
 
 /**
  * Forward projection for cone geometry with flat detector
@@ -93,39 +79,69 @@ struct DIR_Z { // z=0, x=1, y=2
  */
 template<typename C>
 __global__ void cone_fp(
-    cudaTextureObject_t volumeTexture,
-    float ** projections,
-    unsigned int offsetSlice,
-    unsigned int offsetProj,
-    unsigned int voxX,
-    unsigned int voxY,
-    unsigned int voxZ,
-    unsigned int projs,
-    unsigned int rows,
-    unsigned int cols,
-    unsigned int projsPitch,
-    unsigned int rowsPitch,
-    unsigned int colsPitch,
+    cudaTextureObject_t volume,
+    float ** __restrict__ projections,
+    int offsetSlice,
+    int offsetProj,
+    int voxX,
+    int voxY,
+    int voxZ,
+    int projs,
+    int rows,
+    int cols,
+    int projsPitch,
+    int rowsPitch,
+    int colsPitch,
     float scale1,
     float scale2,
     float outputScale
 ) {
     int row, col, endRow, endCol;
-    const int pixelsPerThread = {{ pixels_per_thread }};
 
-    row = blockIdx.x * blockDim.x + threadIdx.x;
-    if (row >= rows)
-        return;
-    endRow = row + 1;
+    {% if projection_axes[2] == 2 %}
+        // assignment: (theta->z, rows->y, cols->x)
+        col = blockIdx.x * blockDim.x + threadIdx.x;
+        if (col >= cols)
+            return;
+        endCol = col + 1;
 
-    col = blockIdx.y * pixelsPerThread;
-    endCol = col + pixelsPerThread;
-    if (endCol > cols)
-        endCol = cols;
+        row = blockIdx.y * {{ rows_per_block }};
+        endRow = row + {{ rows_per_block }};
+        if (endRow > rows)
+            endRow = rows;
 
-    const int proj = offsetProj + blockIdx.z;
+        const int proj = offsetProj + blockIdx.z;
+    {% elif projection_axes[2] == 1 %}
+        // assignment: (theta->z, rows->x, cols->y)
+        row = blockIdx.x * blockDim.x + threadIdx.x;
+        if (row >= rows)
+            return;
+        endRow = row + 1;
 
-    int endSlice = offsetSlice + {{ slices_per_thread }};
+        col = blockIdx.y * {{ cols_per_block }};
+        endCol = col + {{ cols_per_block }};
+        if (endCol >= cols)
+            endCol = cols;
+
+        const int proj = offsetProj + blockIdx.z;
+    {% else %}
+        // assignment: (theta->x, u->y, v->z)
+        const int proj = offsetProj + blockIdx.x * blockDim.x + threadIdx.x;
+        if (proj >= projs)
+            return;
+
+        row = blockIdx.y * {{ rows_per_block }};
+        endRow = row + {{ rows_per_block }};
+        if (endRow >= rows)
+            endRow = rows;
+
+        col = blockIdx.z * {{ cols_per_block }};
+        endCol = col + {{ cols_per_block }};
+        if (endCol > cols)
+            endCol = cols;
+    {% endif %}
+
+    int endSlice = offsetSlice + {{ slices_per_block }};
     if (endSlice > C::nSlices(voxX, voxY, voxZ))
         endSlice = C::nSlices(voxX, voxY, voxZ);
 
@@ -172,10 +188,12 @@ __global__ void cone_fp(
                 // add interpolated voxel value at current coordinate
                 // When numpy axes are x, y, z = (0, 1, 2) we need (z, y, x)
                 // here.
-                {% set ax = ['z', 'y', 'x'] %}
-                val += C::tex(volumeTexture, {{ ax[volume_axes[0]] }},
-                                             {{ ax[volume_axes[1]] }},
-                                             {{ ax[volume_axes[2]] }});
+                {% set ax = ['x', 'y', 'z'] %}
+                val += C::tex(volume,
+                    {{ ax[volume_axes[2]] }},
+                    {{ ax[volume_axes[1]] }},
+                    {{ ax[volume_axes[0]] }});
+
                 x += 1.f;
                 y += a1;
                 z += a2;
@@ -185,10 +203,11 @@ __global__ void cone_fp(
              *  sqrt(a1 * a1 + a2 * a2 + 1.0f) * outputScale; */
             val *= sqrt(a1 * a1 * scale1 + a2 * a2 * scale2 + 1.f);
             // printf("row %d col %d rows %d cols %d\n %d\n ", row, col, rows, cols, val);
-            {% set n = ['projsPitch', 'rowsPitch', 'colsPitch'] %}
-            {% set i = ['proj', 'r', 'c'] %}
-            projections[{{i[projection_axes[0]]}}]
-                       [{{i[projection_axes[1]]}} * {{n[projection_axes[2]]}} + {{i[projection_axes[2]]}}]
+            {% set nr = ['projsPitch', 'rowsPitch', 'colsPitch'] %}
+            {% set idx = ['proj', 'r', 'c'] %}
+            projections[{{idx[projection_axes[0]]}}] // projection/sinogram number
+                       [{{idx[projection_axes[1]]}} * {{nr[projection_axes[2]]}} // row idx * nr of cols
+                      + {{idx[projection_axes[2]]}}] // pixel in the row or col
                 += val * outputScale;
         }
     }
