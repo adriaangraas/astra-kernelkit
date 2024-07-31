@@ -1,6 +1,7 @@
 import itertools
 
 import cupy as cp
+import kernelkit as kk
 import numpy as np
 import pytest
 
@@ -8,7 +9,66 @@ from kernelkit import (ProjectionGeometry, ProjectionGeometrySequence, Beam,
     rotate, Detector, resolve_volume_geometry)
 from kernelkit.kernels import RayDrivenConeFP
 from kernelkit.kernels.reference_cone_fp import ReferenceConeFP
-from kernelkit.kernel import copy_to_texture
+from kernelkit.kernel import copy_to_texture, KernelNotCompiledException, \
+    KernelMemoryUnpreparedException
+
+
+@pytest.fixture
+def volume():
+    return cp.ones((2, 2, 2), cp.float32)
+
+
+@pytest.fixture
+def volume_geometry(volume):
+    return kk.resolve_volume_geometry(
+        shape=volume.shape,
+        extent_min=[-.5, None, None],
+        extent_max=[.5, None, None])
+
+
+@pytest.fixture
+def geom_t0(
+        rows=9,
+        cols=9,
+        src_dist=5.,
+        det_dist=5.,
+        px_h=1.,
+        px_w=1.
+):
+    return kk.ProjectionGeometry(
+        source_position=[-src_dist, 0, 0],
+        detector_position=[det_dist, 0, 0],
+        beam=Beam.CONE,
+        detector=kk.Detector(rows, cols, px_h, px_w))
+
+
+def test_call_raises_not_compiled_exception(geom_t0, volume, volume_geometry):
+    K = RayDrivenConeFP()
+    assert not K.is_compiled
+
+    projs = cp.zeros((1, geom_t0.detector.rows, geom_t0.detector.cols),
+                     dtype=cp.float32)
+    ptrs = cp.asarray([p.data.ptr for p in projs])
+    pg = ProjectionGeometrySequence.fromList([geom_t0])
+    vol_txt = copy_to_texture(volume)
+    with pytest.raises(KernelNotCompiledException):
+        K.__call__(vol_txt, pg, volume_geometry, ptrs)
+    assert not K.is_compiled
+    K.compile()
+    assert K.is_compiled
+
+
+def test_call_raises_exception_when_parameters_not_set(geom_t0, volume,
+                                                       volume_geometry):
+    K = RayDrivenConeFP()
+    K.compile()
+    vol_txt = copy_to_texture(volume)
+    projs = cp.zeros((1, geom_t0.detector.rows, geom_t0.detector.cols),
+                     dtype=cp.float32)
+    ptrs = cp.asarray([p.data.ptr for p in projs])
+    pg = ProjectionGeometrySequence.fromList([geom_t0])
+    with pytest.raises(KernelMemoryUnpreparedException):
+        K.__call__(vol_txt, pg, volume_geometry, ptrs)
 
 
 @pytest.mark.parametrize('axis', (0, 1, 2, ))
@@ -28,7 +88,7 @@ def test_projection_axes(axis):
         pixel_height=8. / 128,
         pixel_width=8. / 128)
 
-    # magnification factor 1.1
+    # magnification factor 1.0
     SOD = 4.
     SDD = 1.0 * SOD
     geom_t0 = ProjectionGeometry(
