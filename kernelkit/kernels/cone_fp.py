@@ -342,7 +342,12 @@ class RayDrivenConeFP(BaseKernel):
         """Transfer geometries to device as structure of arrays."""
 
         assert [len(params[0]) == len(p) for p in params]
-        if len(params[0]) > self._compiled_template_kwargs["nr_projs_global"]:
+        if not self.is_compiled:
+            raise KernelNotCompiledException(
+                f"Compile {self.__class__.__name__} before setting its "
+                f"parameters.")
+
+        if len(params[0]) > self._compiled_template_kwargs['nr_projs_global']:
             raise ValueError(
                 f"Number of projections, {len(params) // 12}, exceeds the "
                 "the maximum of the compiled kernel, namely "
