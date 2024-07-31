@@ -198,7 +198,6 @@ class RayDrivenConeFP(BaseKernel):
         nr_angles = len(projection_geometry)
         nr_rows = int(projection_geometry.detector.rows[0])
         nr_cols = int(projection_geometry.detector.cols[0])
-        blocks_x = ceil(nr_rows / self.pixels_per_block[1])
 
         if projections_pitch is None:
             projections_pitch = (nr_angles, nr_rows, nr_cols)
@@ -351,20 +350,6 @@ class RayDrivenConeFP(BaseKernel):
                 "Please recompile the kernel with a higher "
                 "`max_projs`."
             )
-
-        m = self._module
-        copy_to_symbol(m, "srcsX", params[0])
-        copy_to_symbol(m, "srcsY", params[1])
-        copy_to_symbol(m, "srcsZ", params[2])
-        copy_to_symbol(m, "detsSX", params[3])
-        copy_to_symbol(m, "detsSY", params[4])
-        copy_to_symbol(m, "detsSZ", params[5])
-        copy_to_symbol(m, "detsUX", params[6])
-        copy_to_symbol(m, "detsUY", params[7])
-        copy_to_symbol(m, "detsUZ", params[8])
-        copy_to_symbol(m, "detsVX", params[9])
-        copy_to_symbol(m, "detsVY", params[10])
-        copy_to_symbol(m, "detsVZ", params[11])
         cuda_var_names = [
             "srcsX", "srcsY", "srcsZ", "detsSX", "detsSY", "detsSZ",
             "detsUX", "detsUY", "detsUZ", "detsVX", "detsVY", "detsVZ"]
