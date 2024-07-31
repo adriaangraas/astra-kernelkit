@@ -209,7 +209,7 @@ class BaseKernel(ABC):
                 f" with arguments {template_kwargs}"
                 "..."
             )
-        self._compiled_template_kwargs = template_kwargs
+        self.__compiled_template_kwargs = template_kwargs
         code = jinja2.Template(
             self.cuda_source, undefined=jinja2.StrictUndefined
         ).render(**template_kwargs)
@@ -222,6 +222,15 @@ class BaseKernel(ABC):
         )
         # TODO(Adriaan): add `jittify=False` when compilation is slow?
         return self._module
+
+    @property
+    def _compiled_template_kwargs(self):
+        try:
+            return self.__compiled_template_kwargs
+        except AttributeError:
+            raise KernelNotCompiledException(
+                f"Cannot query the compiled template arguments of kernel "
+                f"{self.__class__.__name__} before compilation.")
 
     @property
     def is_compiled(self):
