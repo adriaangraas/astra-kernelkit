@@ -345,6 +345,7 @@ class ForwardProjector(Projector):
                 self._projs.fill(0.0)  # much faster than list below
             else:
                 # TODO(Adriaan): slow. Faster fill in the kernel?
+                # TODO(Adriaan): or try with non-blocking stream
                 [p.fill(0.0) for p in self._projs]
 
         self._K(self._texture, self._proj_geom_seq, self._vol_geom,
@@ -591,15 +592,3 @@ class BackProjector(Projector):
         if not additive:
             self.volume.fill(0.0)
         self._K(self._textures, self._vol, self.volume_geometry)
-        if self._K.volume_axes == (2, 1, 0):
-            pass
-        elif self._K.volume_axes == (0, 1, 2):
-            # returning a view (an array transpose)
-            # TODO(Adriaan): think about a more sustainable solution
-            self._vol[...] = cp.reshape(self._vol,
-                                        tuple(reversed(self._vol.shape))).T
-        else:
-            raise NotImplementedError(
-                "Sorry! Not yet implemented, but should"
-                " be easy enough to do so. Please open an issue."
-            )

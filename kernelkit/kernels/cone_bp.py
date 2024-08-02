@@ -40,7 +40,7 @@ class VoxelDrivenConeBP(BaseKernel):
         Surf2DLayered = "surf2DLayered"
         Tex2D = "tex2D"  # List of pitch2D, or list of 2D CUDA arrays
 
-    voxels_per_block = (16, 32, 6)  # ASTRA Toolbox default
+    voxels_per_block = (6, 32, 16)  # ASTRA Toolbox default
     projs_per_block = 32  # ASTRA Toolbox default
 
     def __init__(
@@ -55,8 +55,17 @@ class VoxelDrivenConeBP(BaseKernel):
         Parameters
         ----------
         voxels_per_block : tuple, optional
-            Number of voxels computed in one thread block.
-            If `None` defaults to `VOXELS_PER_BLOCK`.
+            Number of voxels computed in one thread block, corresponding to
+            the reversed `volume.shape`, not taking into account the mapping to
+            world coordinates via `volume_axes`.
+            I.e.: voxels_per_block[2] describes CUDA blockDim.x and
+            voxels_per_block[0] describes how many slices `i` of
+            `volume[i, ...]` are processed in one thread.
+            If your input `volume` is (8, 16, 32) voxels, maybe a good setting
+            would be (32, 16, 8), regardless to which world axes (x, y, z) the
+            8, 16, and 32 voxels belong. Note
+            `voxels_per_block[0] * voxels_per_block[1]`  is constrained to
+            the maximum number of CUDA threads, typically 1024.
         projs_per_block : int, optional
             Maximum number of projections processed in one thread block.
             If `None` defaults to `LIMIT_PROJS_PER_BLOCK`.
@@ -135,7 +144,7 @@ class VoxelDrivenConeBP(BaseKernel):
                     )
             elif texture.value in (
                 self.InterpolationMethod.Tex2DLayered.value,
-                self.InterpolationMethod.Tex3D,
+                # self.InterpolationMethod.Tex3D.value,
             ):
                 if self._proj_axs[0] != 0:
                     raise ValueError(
@@ -146,9 +155,7 @@ class VoxelDrivenConeBP(BaseKernel):
         self._compile(
             name_expressions=("cone_bp",),
             template_kwargs={
-                "nr_vxls_block_x": self._vox_block[0],
-                "nr_vxls_block_y": self._vox_block[1],
-                "nr_vxls_block_z": self._vox_block[2],
+                "voxels_per_block": self._vox_block,
                 "nr_projs_block": self._projs_block,
                 "nr_projs_global": max_projs,
                 "texture": texture.value if texture is not None else texture,
@@ -158,22 +165,26 @@ class VoxelDrivenConeBP(BaseKernel):
         )
         self._module.compile()
 
-    def set_params(self, params: Sequence):
+    def set_params(self, params: cp.ndarray):
         """Copy parameters to constant memory of the kernel.
 
         Parameters
         ----------
-        params : Sequence
-            Sequence of parameters for each projection. Can be obtained
+        params : cupy.ndarray
+            Array of parameters for each projection. Can be obtained
             with `VoxelDrivenConeBP.geoms2params()`.
         """
+        if not self.is_compiled:
+            raise KernelNotCompiledException(
+                f"Kernel {self.__class__.__name__} must be compiled before "
+                f"uploading parameters to the GPU.")
+
         if len(params) // 12 > self._compiled_template_kwargs["nr_projs_global"]:
             raise ValueError(
                 f"Number of projections, {len(params) // 12}, exceeds the "
                 "the maximum of the compiled kernel, namely "
                 f"{self._compiled_template_kwargs['nr_projs_global']}. "
-                "Please recompile the kernel with a higher "
-                "`max_projs`."
+                "Please recompile the kernel with a higher `max_projs`."
             )
         copy_to_symbol(self._module, "params", params)
         self._params_are_set = True
@@ -280,14 +291,14 @@ class VoxelDrivenConeBP(BaseKernel):
             )
 
         cone_bp = self._module.get_function("cone_bp")
-        volume_shape = volume_geometry.shape
         vox_vol = cp.float32(volume_geometry.voxel_volume())
-        blocks = np.ceil(np.asarray(volume_shape) / self._vox_block).astype(np.int32)
+        blocks = np.ceil(np.asarray(volume.shape) / self._vox_block).astype(np.int32)
+
         for start in range(0, nr_projs, self._projs_block):
             cone_bp(
-                (blocks[0] * blocks[1], blocks[2]),  # grid
-                (self._vox_block[0], self._vox_block[1]),  # threads
-                (textures, volume, start, nr_projs, *volume_shape, vox_vol),
+                (blocks[2] * blocks[1], blocks[0]),
+                (self._vox_block[2], self._vox_block[1]),
+                (textures, volume, start, nr_projs, *volume.shape, vox_vol),
             )
 
     @staticmethod

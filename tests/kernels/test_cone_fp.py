@@ -270,7 +270,9 @@ def test_volume_axes_choices(axes: tuple):
         projs[0, det.rows // 2, det.cols // 2].get(),
         volume_integral_through_center)
 
+
 projection_axes_expected_outcome = None
+
 
 @pytest.mark.parametrize('axes',
                          itertools.permutations((0, 1, 2)))
