@@ -8,7 +8,6 @@ Website: http://www.astra-toolbox.com/
 
 This file is part of the ASTRA Toolbox.
 
-
 The ASTRA Toolbox is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
@@ -51,12 +50,6 @@ struct ProjectionDirection {
     __device__ inline static float x(float x, float y, float z) { return getAxis(x, y, z, AXIS_X); }
     __device__ inline static float y(float x, float y, float z) { return getAxis(x, y, z, AXIS_Y); }
     __device__ inline static float z(float x, float y, float z) { return getAxis(x, y, z, AXIS_Z); }
-    __device__ inline static float tex(const cudaTextureObject_t& vol, float f0, float f1, float f2) {
-        return tex3D<float>(vol,
-                            getAxis(f0, f1, f2, AXIS_X),
-                            getAxis(f0, f1, f2, AXIS_Y),
-                            getAxis(f0, f1, f2, AXIS_Z));
-    }
 private:
     __device__ inline static float getAxis(float x, float y, float z, int axis) {
         return (axis == 0) ? x : ((axis == 1) ? y : z);
@@ -64,8 +57,8 @@ private:
 };
 
 using DIR_X = ProjectionDirection<0, 1, 2>;
-using DIR_Y = ProjectionDirection<1, 2, 0>;
-using DIR_Z = ProjectionDirection<2, 0, 1>;
+using DIR_Y = ProjectionDirection<1, 0, 2>;
+using DIR_Z = ProjectionDirection<2, 1, 0>;
 
 /**
  * Forward projection for cone geometry with flat detector
@@ -79,7 +72,7 @@ using DIR_Z = ProjectionDirection<2, 0, 1>;
  */
 template<typename C>
 __global__ void cone_fp(
-    cudaTextureObject_t volume,
+    const cudaTextureObject_t volume,
     float ** __restrict__ projections,
     int offsetSlice,
     int offsetProj,
@@ -168,10 +161,11 @@ __global__ void cone_fp(
             /*        (x)   ( 1)       ( 0) *
              * ray:   (y) = (ay) * x + (by) *
              *        (z)   (az)       (bz) */
-            const float a1 = (C::y(sX, sY, sZ) - C::y(detX, detY, detZ))
-                             / (C::x(sX, sY, sZ) - C::x(detX, detY, detZ));
-            const float a2 = (C::z(sX, sY, sZ) - C::z(detX, detY, detZ))
-                             / (C::x(sX, sY, sZ) - C::x(detX, detY, detZ));
+            // ray increments
+            const float SDD = C::x(sX, sY, sZ) - C::x(detX, detY, detZ);
+            const float a1 = (C::y(sX, sY, sZ) - C::y(detX, detY, detZ)) / SDD;
+            const float a2 = (C::z(sX, sY, sZ) - C::z(detX, detY, detZ)) / SDD;
+            // ray offsets
             const float b1 = C::y(sX, sY, sZ) - a1 * C::x(sX, sY, sZ);
             const float b2 = C::z(sX, sY, sZ) - a2 * C::x(sX, sY, sZ);
 
@@ -188,12 +182,14 @@ __global__ void cone_fp(
                 // add interpolated voxel value at current coordinate
                 // When numpy axes are x, y, z = (0, 1, 2) we need (z, y, x)
                 // here.
-                {% set ax = ['x', 'y', 'z'] %}
-                val += C::tex(volume,
-                    {{ ax[volume_axes[2]] }},
-                    {{ ax[volume_axes[1]] }},
-                    {{ ax[volume_axes[0]] }});
-
+                float Cx = C::x(x, y, z);
+                float Cy = C::y(x, y, z);
+                float Cz = C::z(x, y, z);
+                {% set ax = ['Cx', 'Cy', 'Cz'] %}
+                float x_ = {{ax[volume_axes[0]]}};
+                float y_ = {{ax[volume_axes[1]]}};
+                float z_ = {{ax[volume_axes[2]]}};
+                val += tex3D<float>(volume, z_, y_, x_);
                 x += 1.f;
                 y += a1;
                 z += a2;
@@ -202,7 +198,7 @@ __global__ void cone_fp(
             /* Distance correction: Could be (for cubes):
              *  sqrt(a1 * a1 + a2 * a2 + 1.0f) * outputScale; */
             val *= sqrt(a1 * a1 * scale1 + a2 * a2 * scale2 + 1.f);
-            // printf("row %d col %d rows %d cols %d\n %d\n ", row, col, rows, cols, val);
+
             {% set nr = ['projsPitch', 'rowsPitch', 'colsPitch'] %}
             {% set idx = ['proj', 'r', 'c'] %}
             projections[{{idx[projection_axes[0]]}}] // projection/sinogram number
