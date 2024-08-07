@@ -10,11 +10,12 @@ ASTRA KernelKit is part of the `ASTRA Toolbox` project.
 # ASTRA KernelKit
 
 ASTRA KernelKit is an all-Python tomographic reconstruction package, leveraging 
-the tomographic projection kernels of the [ASTRA Toolbox](https://github.com/astra-toolbox/astra-toolbox) 
+the GPU-accelerated tomographic projection kernels of the [ASTRA Toolbox](https://github.com/astra-toolbox/astra-toolbox) 
 using [CuPy](https://cupy.dev/).
  - Develop, explore and debug algorithms and projectors with the Python ecosystem.
  - Use CUDA features such as graphs and unified memory for maximum performance.
- - Kernels are compiled during the script with NVRTC and [Jinja2](https://jinja.palletsprojects.com/). No complicated builds.
+ - Kernels are compiled during the script with NVRTC and [Jinja2](https://jinja.palletsprojects.com/). No 
+   complicated build system, and yet easy customization of kernels.
  - Easy to install and integrates well with PyTorch and other GPU frameworks.
 
 ## Installation
