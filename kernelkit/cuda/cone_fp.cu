@@ -179,9 +179,6 @@ __global__ void cone_fp(
 
             float val = 0.f;
             for (int s = offsetSlice; s < endSlice; ++s) {
-                // add interpolated voxel value at current coordinate
-                // When numpy axes are x, y, z = (0, 1, 2) we need (z, y, x)
-                // here.
                 float Cx = C::x(x, y, z);
                 float Cy = C::y(x, y, z);
                 float Cz = C::z(x, y, z);

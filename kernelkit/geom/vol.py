@@ -48,11 +48,12 @@ class VolumeGeometry:
 
         Notes
         -----
-         - To encode a shift, use the `extent_min` and `extent_max` parameters.
-         - The `shape`, `voxel_size`, `extent_min`, `extent_max`, and `rotation`
-           parameters are all stored as tuples. They contain redundant information,
-           to generate this object from only a few parameters, see
-          `kernelkit.geom.vol.resolve_volume_geometry`.
+             - To encode a shift, use the `extent_min` and `extent_max` parameters.
+             - The `shape`, `voxel_size`, `extent_min`, `extent_max`, and `rotation`
+               parameters are all stored as tuples. They contain redundant information,
+               to generate this object from only a few parameters, see
+               kernelkit.geom.vol.resolve_volume_geometry`.
+
         """
         self.shape = tuple(np.array(shape, dtype=np.int32))
         self.voxel_size = tuple(np.array(voxel_size, dtype=np.float32))

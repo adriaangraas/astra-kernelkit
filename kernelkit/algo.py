@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 
 from kernelkit.data import aspitched, pitched_like
-from kernelkit.geom.proj import ProjectionGeometry
+from kernelkit.geom.proj import Beam, ProjectionGeometry
 from kernelkit.geom.vol import VolumeGeometry
 from kernelkit.kernel import BaseKernel
 from kernelkit.kernels.cone_bp import VoxelDrivenConeBP
@@ -108,6 +108,7 @@ def bp(
 
     # TODO(Adriaan): rewrite using the `XrayTransform` class
     kwargs.update(projection_axes=projection_axes)
+    kwargs.update(beam=projection_geometry[0].beam)
     ptor = BackProjector(
         VoxelDrivenConeBP(**kwargs) if kernel is None else kernel,
         texture_type="layered",
@@ -202,11 +203,12 @@ def fdk(
     References
     ----------
     .. [1] Feldkamp, L. A., Davis, L. C., & Kress, J. W. (1984). Practical
-              cone-beam algorithm. Journal of the Optical Society of America A,
-                1(6), 612. https://doi.org/10.1364/JOSAA.1.000612
+        cone-beam algorithm. Journal of the Optical Society of America A,
+        1(6), 612. https://doi.org/10.1364/JOSAA.1.000612
+
     """
     for p in projection_geometry:
-        if p.beam != "cone":
+        if p.beam != Beam.CONE:
             raise NotImplementedError(
                 "Only cone beam geometry is supported at the moment."
             )

@@ -435,6 +435,54 @@ def test_reference_cone_fp():
     assert proj_cpu[4, 4] == pytest.approx(1., 1e-6)
 
 
+def test_anisotropic_voxel_size():
+    fact = 8
+    det = Detector(
+        rows=30*fact,
+        cols=10*fact,
+        pixel_height=1.0/fact,
+        pixel_width=1./fact)
+
+    # magnification factor 1.1
+    SOD = 1e6
+    SDD = 1.0 * SOD
+    geom_t0 = ProjectionGeometry(
+        source_position=[-SOD, 0.0, 0.0],
+        detector_position=[SDD - SOD, 0.0, 0.0],
+        detector=det,
+        beam=Beam.CONE
+    )
+    # kk.rotate_(geom_t0, yaw=np.pi/3)
+    scan = [geom_t0]
+    gt = cp.ones([16] * 3, dtype=cp.float32)
+    pg = ProjectionGeometrySequence.fromList(scan)
+
+    # an isotropic volume
+    vg = resolve_volume_geometry(
+        shape=gt.shape,
+        voxel_size=[1.0, 0.5, 1.5]
+    )
+
+    K = RayDrivenConeFP()
+    K.compile()
+    K.set_params(K.geoms2params(pg, vg))
+    projs = cp.zeros((len(pg), pg[0].detector.rows, pg[0].detector.cols),
+                     dtype=cp.float32)
+    ptrs = cp.asarray([p.data.ptr for p in projs])
+    gt_txt = copy_to_texture(gt)
+    K.__call__(gt_txt, pg, vg, ptrs, projs.shape)
+
+    import matplotlib.pyplot as plt
+    plt.figure()
+    plt.imshow(projs[0].get())
+    plt.show()
+
+    np.testing.assert_almost_equal(
+        projs.sum().get() / fact / fact,
+        np.sum(gt).get() * np.prod(vg.voxel_size),
+        decimal=6)
+
+
 def test_pitched_projections():
     raise NotImplementedError()
     volume = cp.ones((100, 100, 1), dtype=cp.float32)

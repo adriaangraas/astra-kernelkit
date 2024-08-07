@@ -202,10 +202,12 @@ class BaseKernel(ABC):
         """
         template_kwargs = template_kwargs or {}
         if len(template_kwargs) == 0:
-            print(f"Compiling kernel {self.__class__.__name__}...")
+            print(f"Compiling kernel {self.__class__.__name__}:"
+                  f" {', '.join(name_expressions)}...")
         else:
             print(
-                f"Compiling kernel {self.__class__.__name__}"
+                f"Compiling kernel {self.__class__.__name__}:"
+                f" {', '.join(name_expressions)}"
                 f" with arguments {template_kwargs}"
                 "..."
             )
@@ -217,7 +219,7 @@ class BaseKernel(ABC):
             code=code,
             # --std is required for name expressions
             # -line-info for debugging
-            options=("--std=c++11",),  # TODO: c++17 is allowed from CUDA 12
+            options=("--std=c++17",),  # TODO: c++17 is allowed from CUDA 12
             name_expressions=name_expressions,
         )
         # TODO(Adriaan): add `jittify=False` when compilation is slow?

@@ -160,9 +160,9 @@ class Projector(BaseProjector, ABC):
     @projection_geometry.setter
     def projection_geometry(self, value: list[ProjectionGeometry]):
         for p in value:
-            if p.beam != Beam.CONE.value:
+            if p.beam != value[0].beam:
                 raise NotImplementedError(
-                    "Only conebeam geometries are supported at the moment."
+                    "All geometries in the list must have the same beam type."
                 )
         self._proj_geom = value
 
@@ -199,12 +199,6 @@ class Projector(BaseProjector, ABC):
 
     @volume_geometry.setter
     def volume_geometry(self, value: VolumeGeometry):
-        if not value.has_isotropic_voxels():
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}` is not tested with anisotropic "
-                "voxels yet."
-            )
-
         self._vol_geom = value
 
         try:

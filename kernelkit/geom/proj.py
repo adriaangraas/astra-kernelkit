@@ -79,6 +79,24 @@ class Beam(Enum):
 
     CONE = "cone"
     PARALLEL = "parallel"
+    
+    @classmethod
+    def from_string(cls, value: str):
+        """Convert a string to a Beam enum value."""
+        value = value.lower()
+        for beam in cls:
+            if beam.value == value:
+                return beam
+        raise ValueError(f"Invalid beam type: '{value}'")
+
+
+def process_beam_type(arg) -> Beam:
+    if isinstance(arg, Beam):
+        return arg
+    elif isinstance(arg, str):
+        return Beam.from_string(arg)
+    else:
+        raise TypeError("Argument must be of type `str` or `Beam`.")
 
 
 class ProjectionGeometry:
@@ -129,9 +147,7 @@ class ProjectionGeometry:
         self.detector = detector
         self.u = self.xp.array(u, dtype=self.xp.float32)
         self.v = self.xp.array(v, dtype=self.xp.float32)
-        if beam not in Beam:
-            raise ValueError(f"Beam type must be one of {Beam}, got {beam}.")
-        self.beam = beam.value
+        self.beam = process_beam_type(beam)
 
     @property
     def detector_extent_min(self):
@@ -240,6 +256,8 @@ class ProjectionGeometrySequence:
         The vertical v-vector in the detector frame.
     detector : DetectorSequence
         The detector data.
+    beam : array-like
+        The beam type.
     xp : array-like, optional
         The array library to use. If None, it defaults to numpy.
     """
@@ -291,6 +309,7 @@ class ProjectionGeometrySequence:
     u: xp.ndarray
     v: xp.ndarray
     detector: DetectorSequence
+    beam: Beam
 
     def __len__(self):
         return len(self.source_position)
@@ -319,6 +338,8 @@ class ProjectionGeometrySequence:
         if xp is None:
             xp = cls.xp
 
+        assert np.all([geometries[0].beam == g.beam for g in geometries])
+
         def _cvrt(arr, dtype):
             return xp.ascontiguousarray(xp.array(arr, dtype=dtype))
 
@@ -338,6 +359,7 @@ class ProjectionGeometrySequence:
             u=_cvrt([g.u for g in geometries], xp.float32),
             v=_cvrt([g.v for g in geometries], xp.float32),
             detector=ds,
+            beam=geometries[0].beam,
         )
         return gs
 
@@ -361,6 +383,7 @@ class ProjectionGeometrySequence:
             u=self.u[indices],
             v=self.v[indices],
             detector=ds,
+            beam=self.beam
         )
         return gs
 
@@ -374,6 +397,7 @@ class ProjectionGeometrySequence:
             detector_position=xp.copy(self.detector_position),
             u=xp.copy(self.u),
             v=xp.copy(self.v),
+            beam=xp.copy(self.beam),
             detector=ProjectionGeometrySequence.DetectorSequence(
                 rows=xp.copy(self.detector.rows),
                 cols=xp.copy(self.detector.cols),
@@ -506,6 +530,7 @@ def rotate(
     ngeom.detector_position = R @ geom.detector_position
     ngeom.u = R @ geom.u
     ngeom.v = R @ geom.v
+    ngeom.beam = geom.beam
     return ngeom
 
 
