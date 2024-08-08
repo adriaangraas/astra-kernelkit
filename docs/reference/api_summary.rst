@@ -35,7 +35,7 @@ Kernels
    kernelkit.kernel.BaseKernel
    kernelkit.kernel.copy_to_texture
    kernelkit.kernel.copy_to_symbol
-   kernelkit.kernels.VoxelDrivenBP
+   kernelkit.kernels.VoxelDrivenConeBP
    kernelkit.kernels.RayDrivenConeFP
 
 
