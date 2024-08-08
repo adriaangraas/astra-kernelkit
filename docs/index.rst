@@ -1,26 +1,23 @@
-.. ASTRA KernelKit documentation master file, created by
-   sphinx-quickstart on Mon Aug  7 11:17:11 2023.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+=============================
+ASTRA KernelKit documentation
+=============================
 
-Welcome to ASTRA KernelKit's documentation!
-===================================
+**ASTRA KernelKit** is an all-Python tomographic reconstruction package,
+leveraging the GPU-accelerated tomographic projection kernels of the ASTRA
+Toolbox using CuPy.
 
-**ASTRA KernelKit** is a Python library for ``cooks`` and food lovers that
-creates recipes mixing random ingredients.  It pulls data from the `Open Food
-Facts database <https://world.openfoodfacts.org/>`_ and offers a *simple* and
-*intuitive* API.
+- Develop, explore and debug CT algorithms and X-ray projectors with the Python ecosystem.
+- Leverage CUDA features, such as CUDA graphs or unified memory, for maximum performance.
+- Kernels are compiled during the script with NVRTC and
+  `Jinja2 <https://jinja.palletsprojects.com/>`_. Hence, no
+  complicated build system, and yet easy customization of kernels.
+- Easy to install and integrates well with PyTorch and other GPU frameworks!
 
-
-Try ASTRA KernelKit yourself, visit `installation <install/>`.
-
-.. warning::
-   This project is under active development, and the **API is not
-   stable yet**.  If you have any questions, please open an issue on `GitHub <https://github.com/adriaangraas/astra-kernelkit>`_.
+Try ASTRA KernelKit yourself, visit :doc:`general/install`.
 
 
 .. note::
-   For **ASTRA Toolbox** (with Python and MatLab interfaces), visit `<https://astra-toolbox.readthedocs.io/en/latest/>`_. The KernelKit package is geared towards developers.
+   For **ASTRA Toolbox** visit `<https://astra-toolbox.readthedocs.io/en/latest/>`_.
 
 
 .. toctree::
@@ -28,34 +25,23 @@ Try ASTRA KernelKit yourself, visit `installation <install/>`.
    :hidden:
 
    Installation <general/install>
-   About ASTRA <general/differences>
-   Tomographic principles <general/tomography>
+   X-ray CT projectors <general/tomography>
+   About / FAQ <general/about>
 
 
 .. toctree::
-   :caption: USER GUIDE
+   :caption: Reference
    :maxdepth: 2
    :hidden:
 
-   Basics of KernelKit <user_guide/concepts>
    Geometries <user_guide/geometries>
-   Kernels <user_guide/kernels>
    Projectors <user_guide/projectors>
-   Operators <user_guide/operators>
-   Algorithms <user_guide/algorithms>
+   reference/api_summary
 
 .. toctree::
-   :caption: ADVANCED USE
+   :caption: Tutorials
    :maxdepth: 2
    :hidden:
 
-   Kernel templating <advanced/kernel_templating>
-   Best practices <advanced/best_practices>
+   KernelKit concepts <tutorials/concepts>
 
-
-.. toctree::
-   :caption: API REFERENCE
-   :maxdepth: 1
-   :hidden:
-
-   reference/api_summary

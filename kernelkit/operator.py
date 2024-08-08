@@ -34,7 +34,7 @@ class BaseOperator(ABC):
 
 
 class ProjectorOperator(BaseOperator, ABC):
-    """An operator $A : X \\to Y$, using a forward and backprojector."""
+    """An operator :math:`A : X \\to Y` using a forward and backprojector."""
 
     def __init__(self, projector: BaseProjector, backprojector: BaseProjector):
         """Create a projector operator.
@@ -59,13 +59,13 @@ class ProjectorOperator(BaseOperator, ABC):
 
     @property
     def domain_shape(self) -> tuple:
-        """The domain $\\dom{A}$."""
+        """The domain :math:`\\text{dom}(A)`"""
         vol_axs = self.projector.volume_axes
         return tuple(self.projector.volume_geometry.shape[i] for i in vol_axs)
 
     @property
     def range_shape(self) -> tuple:
-        """The range $\\ran{A}$."""
+        """The range :math:`\\text{ran}(A)`."""
         nr_angles = len(self.projector.projection_geometry)
         det_shape = (
             self.projector.projection_geometry[0].detector.rows,
@@ -74,8 +74,9 @@ class ProjectorOperator(BaseOperator, ABC):
         proj_axs = self.projector.projection_axes
         return tuple((nr_angles, *det_shape)[i] for i in proj_axs)
 
-    def __call__(self, input: cp.ndarray, out: cp.ndarray | None = None):
-        """Apply the forward projector, $A(x)$.
+    def __call__(self, input: cp.ndarray, out: cp.ndarray | None = None,
+                 additive=False):
+        """Apply the forward projector, :math:`A(x)`.
 
         Parameters
         ----------
@@ -92,9 +93,10 @@ class ProjectorOperator(BaseOperator, ABC):
             )
         if out is None:
             out = cp.zeros(self.range_shape, dtype=cp.float32)
+
         self.projector.volume = input
         self.projector.projections = out
-        self.projector()
+        self.projector(additive=additive)
         return out
 
     @property
@@ -102,7 +104,7 @@ class ProjectorOperator(BaseOperator, ABC):
         self_ = self
 
         class _Adjoint(BaseOperator):
-            """The adjoint operator $A^* : Y \\to X$."""
+            """The adjoint operator :math:`A^* : Y \\to X`."""
 
             def __init__(self):
                 """Create the adjoint operator."""
@@ -111,16 +113,16 @@ class ProjectorOperator(BaseOperator, ABC):
 
             @property
             def domain_shape(self) -> tuple:
-                """The domain $\\dom{A^*}=\\ran{A}$."""
+                """The domain :math:`\\text{dom}(A^*)=\\text{ran}(A)`."""
                 return self_.range_shape
 
             @property
             def range_shape(self) -> tuple:
-                """The range $\\ran{A^*}=\\dom{A}$."""
+                """The range :math:`\\text{ran}(A^*)=\\text{dom}(A)`."""
                 return self_.domain_shape
 
-            def __call__(self, input: cp.ndarray, out=None):
-                """Apply the backprojector, $A^*(y)$."""
+            def __call__(self, input: cp.ndarray, out=None, additive=False):
+                """Apply the backprojector, :math:`A^*(y)`."""
                 if input.shape != self.domain_shape:
                     raise ValueError(
                         f"Input shape {input.shape} does not "
@@ -131,12 +133,12 @@ class ProjectorOperator(BaseOperator, ABC):
                     out = cp.zeros(self.range_shape, dtype=cp.float32)
                 self.projector.projections = input
                 self.projector.volume = out
-                self.projector()
+                self.projector(additive)
                 return out
 
             @property
             def T(self):
-                """The adjoint of the adjoint operator, $A^{**} = A$."""
+                """The adjoint of the adjoint operator, :math:`A^{**} = A`."""
                 return self_
 
         if not hasattr(self, "_T"):
@@ -181,39 +183,46 @@ class XrayTransform(ProjectorOperator):
 
         Notes
         -----
-        If `astra_compat` is True, the `volume_axes` and `projection_axes`
+        If `use_toolbox` is True, the `volume_axes` and `projection_axes`
         must be set to (2, 1, 0) and (1, 0, 2), respectively.
         """
         fp_kwargs = fp_kwargs or {}
         bp_kwargs = bp_kwargs or {}
         if use_toolbox:
-            from kernelkit.toolbox_support import (
-                ForwardProjectorAdapter,
-                BackprojectorAdapter,
-            )
+            import kernelkit.toolbox_support
 
             if projection_axes != (1, 0, 2):
                 raise ValueError(
                     "ASTRA Toolbox compatible projectors can only"
                     " be used with `projection_axes=(1, 0, 2)`."
                     " Simply set `projection_axes=(1, 0, 2)` and"
-                    " transpose the input."
+                    " transpose the input if necessary."
                 )
             if volume_axes != (2, 1, 0):
                 raise ValueError(
                     "ASTRA Toolbox compatible projectors can only"
                     " be used with `volume_axes=(2, 1, 0)`. "
                     " Simply set `volume_axes=(2, 1, 0)` and "
-                    " transpose the input."
+                    " transpose the input if necessary."
                 )
-            projector = ForwardProjectorAdapter(**fp_kwargs)
-            backprojector = BackprojectorAdapter(**bp_kwargs)
+            if fp_kwargs or bp_kwargs:
+                raise ValueError(
+                    "ASTRA Toolbox projectors do not accept any additional "
+                    "`fp_kwargs` or `bp_kwargs`"
+                )
+
+            projector = kernelkit.toolbox_support.ForwardProjector()
+            backprojector = kernelkit.toolbox_support.BackProjector()
         else:
             projector = ForwardProjector(
-                volume_axes=volume_axes, projection_axes=projection_axes, **fp_kwargs
+                volume_axes=volume_axes,
+                projection_axes=projection_axes,
+                **fp_kwargs
             )
             backprojector = BackProjector(
-                volume_axes=volume_axes, projection_axes=projection_axes, **bp_kwargs
+                volume_axes=volume_axes,
+                projection_axes=projection_axes,
+                **bp_kwargs
             )
 
         projector.volume_geometry = volume_geometry

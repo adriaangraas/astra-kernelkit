@@ -1,0 +1,166 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto&family=IBM+Plex+Sans&display=swap');
+
+:root {
+    --pst-font-size-base: 11px;
+    --pst-font-family-base-sans-serif: "Roboto";
+    --pst-font-size-h1: 2.2rem;
+    --pst-font-size-h2: 1.5rem;
+    --pst-font-size-h3: 1.25rem;
+    --pst-font-family-heading: "IBM Plex Sans";
+    --pst-color-primary: black;
+    --pst-color-inline-code: var(--bs-red);
+    --pst-color-inline-code-links: var(--bs-blue);
+    --pst-color-text-muted: #888; /* Example color */
+    --fa-font-brands: 'FontAwesome'; /* Ensure this is properly loaded if using FontAwesome */
+    --pst-icon-github: "\f09b"; /* Example GitHub icon content from FontAwesome */
+}
+
+a > code {
+    color: var(--bs-blue);
+}
+
+html {
+    --pst-font-family-base-sans-serif: "Roboto";
+}
+
+html[data-theme="light"] {
+    --pst-color-primary: black;
+    --pst-color-background: #ffffff;
+    --pst-color-warning: var(--bs-red);
+    --pst-color-link: var(--bs-blue);
+    --pst-color-info: var(--bs-blue);
+}
+
+body {
+    font-family: var(--pst-font-family-base-sans-serif), sans-serif;
+    font-size: var(--pst-font-size-base);
+    color: var(--pst-color-primary);
+}
+
+
+h1 {
+    color: black;
+}
+
+h2 {
+    font-size: var(--pst-font-size-h2);
+    border-radius: 0.25rem;
+    text-decoration: underline;
+}
+
+h3 {
+    font-size: var(--pst-font-size-base);
+    font-family: var(--pst-font-family-base-sans-serif), sans-serif;
+    font-weight: bold;
+}
+
+a:hover {
+    color: var(--pst-color-link);
+}
+
+.highlight pre {
+    border: 0 !important;
+}
+
+.bd-article-container h1, .bd-article-container h2, .bd-article-container h3 {
+    color: var(--pst-color-primary);
+}
+
+.bd-sidebar-primary div#rtd-footer-container {
+    bottom:-1rem;
+    margin:-1rem;
+    position:fixed;
+}
+
+.bd-sidebar-primary {
+    border-right: 0;
+}
+
+.sidebar-secondary-item {
+    border-left: 0;
+}
+
+footer.bd-footer-content {
+    border-top: 2px solid black;
+    font-size: 0.75rem;
+    width: 50%;
+    /*font-family: sans-serif;*/
+}
+
+#bd-docs-nav .caption {
+    /*margin-top: 15px;*/
+    /*padding: 3px;*/
+    /*width: 75%;*/
+}
+
+/*#bd-docs-nav .caption-text:before {*/
+/*    content: "• "*/
+/*}*/
+
+#bd-docs-nav .caption-text {
+    /*font-size: .8rem;*/
+    color: black;
+    font-family: var(--pst-font-family-heading);
+    font-weight: 1000;
+}
+
+.bd-article-container {
+    width: 100%;
+}
+
+
+ul.nav li a {
+    font-size: 0.9rem;
+    /*color: black;*/
+    /*font-family: sans-serif;*/
+}
+
+ul.nav li a:hover {
+    color: var(--bs-blue);
+}
+
+ul.nav li a.current, ul.nav li a.current:hover {
+    color: var(--bs-blue);
+    font-weight: normal;
+}
+
+.navbar-brand {
+    font-size: 1.5rem;
+    font-family: var(--pst-font-family-heading);
+    font-style: italic;
+    justify-content: left;
+    align-items: flex-start;
+}
+
+code.literal {
+    border: 0;
+}
+
+.admonition, div.admonition {
+    box-shadow: 0 0 0 0 !important;
+    border: 1px solid var(--bs-blue) !important;
+}
+
+body {
+    /*font-family: "Open Sans", sans-serif;*/
+    font-size: 1rem;
+    /*line-height: 1.5;*/
+}
+
+h2 {
+    color: black !important;
+    font-size: 1.25rem;
+    text-decoration: underline;
+}
+
+h3 {
+    color: black !important;
+    font-size: 1.125rem;
+}
+
+.extlink-github::before {
+    color: var(--pst-color-text-muted);
+    font-family: var(--fa-font-brands); /* Font Awesome font family */
+    margin-right: 0.25rem;
+    content: var(--pst-icon-github);
+}

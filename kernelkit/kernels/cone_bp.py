@@ -1,13 +1,15 @@
 import copy
 from enum import Enum
+from importlib import resources
 from typing import Any, Sequence
 
 import cupy as cp
 from cupy.cuda.texture import TextureObject
 import numpy as np
 
+from kernelkit import KERNELKIT_CUDA_SOURCES
 from kernelkit.geom import normalize_
-from kernelkit.geom.proj import GeometrySequence
+from kernelkit.geom.proj import ProjectionGeometrySequence
 from kernelkit.geom.vol import VolumeGeometry
 from kernelkit.kernel import (
     KernelMemoryUnpreparedException,
@@ -21,7 +23,10 @@ from kernelkit.kernel import (
 class VoxelDrivenConeBP(BaseKernel):
     """Voxel-driven conebeam backprojection kernel."""
 
-    class TextureFetching(Enum):
+    FLOAT_DTYPE = cp.float32
+    SUPPORTED_DTYPES = [cp.float32]
+
+    class InterpolationMethod(Enum):
         """Texture fetching approach.
 
         Notes
@@ -30,11 +35,12 @@ class VoxelDrivenConeBP(BaseKernel):
         the kernel) does not correspond one-on-one to texture objects.
         """
 
-        Tex3D = "3D"  # for single texture object from 3D CUDA Array
-        Tex2DLayered = "2DLayered"  # yes, for layered *3D* CUDA array, no typo
-        Tex2D = "2D"  # List of pitch2D, or list of 2D CUDA arrays
+        Tex3D = "tex3D"  # for single texture object from 3D CUDA Array
+        Tex2DLayered = "tex2DLayered"  # yes, for layered *3D* CUDA array
+        Surf2DLayered = "surf2DLayered"
+        Tex2D = "tex2D"  # List of pitch2D, or list of 2D CUDA arrays
 
-    voxels_per_block = (16, 32, 6)  # ASTRA Toolbox default
+    voxels_per_block = (6, 32, 16)  # ASTRA Toolbox default
     projs_per_block = 32  # ASTRA Toolbox default
 
     def __init__(
@@ -49,8 +55,17 @@ class VoxelDrivenConeBP(BaseKernel):
         Parameters
         ----------
         voxels_per_block : tuple, optional
-            Number of voxels computed in one thread block.
-            If `None` defaults to `VOXELS_PER_BLOCK`.
+            Number of voxels computed in one thread block, corresponding to
+            the reversed `volume.shape`, not taking into account the mapping to
+            world coordinates via `volume_axes`.
+            I.e.: voxels_per_block[2] describes CUDA blockDim.x and
+            voxels_per_block[0] describes how many slices `i` of
+            `volume[i, ...]` are processed in one thread.
+            If your input `volume` is (8, 16, 32) voxels, maybe a good setting
+            would be (32, 16, 8), regardless to which world axes (x, y, z) the
+            8, 16, and 32 voxels belong. Note
+            `voxels_per_block[0] * voxels_per_block[1]`  is constrained to
+            the maximum number of CUDA threads, typically 1024.
         projs_per_block : int, optional
             Maximum number of projections processed in one thread block.
             If `None` defaults to `LIMIT_PROJS_PER_BLOCK`.
@@ -68,7 +83,14 @@ class VoxelDrivenConeBP(BaseKernel):
         kernelkit.kernel.VoxelDrivenConeFP : Conebeam forward projection kernel
         kernelkit.kernel.BaseKernel : Base class for CUDA kernels
         """
-        super().__init__("cone_bp.cu")
+        cuda_source = (
+            resources
+            .files(KERNELKIT_CUDA_SOURCES)
+            .joinpath("cone_bp.cu")
+            .read_text()
+        )
+        super().__init__(cuda_source)
+
         if voxels_per_block is not None and len(voxels_per_block) != 3:
             raise ValueError("`voxels_per_block` must have 3 elements.")
         self._vox_block = (
@@ -92,7 +114,7 @@ class VoxelDrivenConeBP(BaseKernel):
     def compile(
         self,
         max_projs: int = 1024,
-        texture: TextureFetching | str = TextureFetching.Tex3D,
+        texture: InterpolationMethod | None | str = InterpolationMethod.Tex3D,
     ) -> cp.RawModule:
         """Compile the kernel.
 
@@ -107,60 +129,62 @@ class VoxelDrivenConeBP(BaseKernel):
             projections, but N_\theta must be smaller or equal to `max_projs`.
         texture : str, optional
             Type of texture to use. Defaults to `3D`. Can be one of the types
-            specified in `TextureFetching`.
+            specified in `InterpolationMethod`.
         """
-        if texture not in self.TextureFetching:
-            raise ValueError(f"`texture` must be one of {self.TextureFetching}.")
+        if texture is not None:
+            if texture not in self.InterpolationMethod:
+                raise ValueError(f"`texture` must be one of {self.InterpolationMethod}"
+                                 f" or `None`.")
 
-        if texture.value == self.TextureFetching.Tex2D.value:
-            if self._proj_axs[0] != 0:
-                raise ValueError(
-                    "If an array of texture pointers is given, "
-                    "the first `projection_axes` axis must be "
-                    "angles, i.e., must be 0."
-                )
-        elif texture.value in (
-            self.TextureFetching.Tex2DLayered.value,
-            self.TextureFetching.Tex3D,
-        ):
-            if self._proj_axs[0] != 0:
-                raise ValueError(
-                    "If a 3D texture is given, the first "
-                    "`projection_axes` axis must be angles, "
-                    "i.e., must be 0."
-                )
+            if texture.value == self.InterpolationMethod.Tex2D.value:
+                if self._proj_axs[0] != 0:
+                    raise ValueError(
+                        "If an array of texture pointers is given, the first "
+                        "`projection_axes` axis must be angles, i.e., must be 0."
+                    )
+            elif texture.value in (
+                self.InterpolationMethod.Tex2DLayered.value,
+                # self.InterpolationMethod.Tex3D.value,
+            ):
+                if self._proj_axs[0] != 0:
+                    raise ValueError(
+                        "If a 3D texture is given, the first `projection_axes` "
+                        "axis must be angles, i.e., must be 0."
+                    )
 
         self._compile(
             name_expressions=("cone_bp",),
             template_kwargs={
-                "nr_vxls_block_x": self._vox_block[0],
-                "nr_vxls_block_y": self._vox_block[1],
-                "nr_vxls_block_z": self._vox_block[2],
+                "voxels_per_block": self._vox_block,
                 "nr_projs_block": self._projs_block,
                 "nr_projs_global": max_projs,
-                "texture": texture.value,
+                "texture": texture.value if texture is not None else texture,
                 "volume_axes": self._vol_axs,
                 "projection_axes": self._proj_axs,
             },
         )
         self._module.compile()
 
-    def set_params(self, params: Sequence):
+    def set_params(self, params: cp.ndarray):
         """Copy parameters to constant memory of the kernel.
 
         Parameters
         ----------
-        params : Sequence
-            Sequence of parameters for each projection. Can be obtained
+        params : cupy.ndarray
+            Array of parameters for each projection. Can be obtained
             with `VoxelDrivenConeBP.geoms2params()`.
         """
+        if not self.is_compiled:
+            raise KernelNotCompiledException(
+                f"Kernel {self.__class__.__name__} must be compiled before "
+                f"uploading parameters to the GPU.")
+
         if len(params) // 12 > self._compiled_template_kwargs["nr_projs_global"]:
             raise ValueError(
                 f"Number of projections, {len(params) // 12}, exceeds the "
                 "the maximum of the compiled kernel, namely "
                 f"{self._compiled_template_kwargs['nr_projs_global']}. "
-                "Please recompile the kernel with a higher "
-                "`max_projs`."
+                "Please recompile the kernel with a higher `max_projs`."
             )
         copy_to_symbol(self._module, "params", params)
         self._params_are_set = True
@@ -215,16 +239,16 @@ class VoxelDrivenConeBP(BaseKernel):
         if isinstance(textures, cp.ndarray):
             if not textures.dtype == cp.int64:
                 raise ValueError(
-                    "Please give in an array of pointers to "
-                    "TextureObject, or one 3D TextureObject."
+                    f"Please give in an array of int64 pointers to "
+                    f"TextureObject. The given dtype is {textures.dtype}."
                 )
             assert (
                 self._compiled_template_kwargs["texture"]
-                == self.TextureFetching.Tex2D.value
+                in (self.InterpolationMethod.Tex2D.value, None)
             ), (
                 "Kernel was compiled with texture type "
                 f"{self._compiled_template_kwargs['texture']}, "
-                f"but given '{self.TextureFetching.Tex2D.value}'."
+                f"but given '{self.InterpolationMethod.Tex2D.value}'."
             )
             nr_projs = len(textures)
         elif isinstance(textures, TextureObject):
@@ -235,29 +259,30 @@ class VoxelDrivenConeBP(BaseKernel):
             if textures.ResDesc.cuArr.flags % 2 == 1:
                 assert (
                     self._compiled_template_kwargs["texture"]
-                    == self.TextureFetching.Tex2DLayered.value
+                    == self.InterpolationMethod.Tex2DLayered.value
                 ), (
                     "Kernel was compiled with texture type "
                     f"{self._compiled_template_kwargs['texture']}, "
-                    f"but given '{self.TextureFetching.Tex2DLayered.value}'."
+                    f"but given '{self.InterpolationMethod.Tex2DLayered.value}'."
                 )
             else:
                 if (
                     self._compiled_template_kwargs["texture"]
-                    != self.TextureFetching.Tex3D.value
+                    != self.InterpolationMethod.Tex3D.value
                 ):
                     raise ValueError(
                         "Kernel was compiled with texture type "
                         f"{self._compiled_template_kwargs['texture']}, "
-                        f"but given '{self.TextureFetching.Tex3D.value}'."
+                        f"but given '{self.InterpolationMethod.Tex3D.value}'."
                     )
             cuArr = textures.ResDesc.cuArr
             dims = cuArr.depth, cuArr.height, cuArr.width
             nr_projs = dims[self._proj_axs[0]]
         else:
             raise ValueError(
-                "Please give in an array of pointers to "
-                "TextureObject, or one 3D TextureObject."
+                f"Please give in an array of pointers to "
+                f"TextureObject, or one 3D TextureObject. Given is a "
+                f"'{type(textures).__name__}'."
             )
 
         if not self._params_are_set:
@@ -266,14 +291,14 @@ class VoxelDrivenConeBP(BaseKernel):
             )
 
         cone_bp = self._module.get_function("cone_bp")
-        volume_shape = volume_geometry.shape
         vox_vol = cp.float32(volume_geometry.voxel_volume())
-        blocks = np.ceil(np.asarray(volume_shape) / self._vox_block).astype(np.int32)
+        blocks = np.ceil(np.asarray(volume.shape) / self._vox_block).astype(np.int32)
+
         for start in range(0, nr_projs, self._projs_block):
             cone_bp(
-                (blocks[0] * blocks[1], blocks[2]),  # grid
-                (self._vox_block[0], self._vox_block[1]),  # threads
-                (textures, volume, start, nr_projs, *volume_shape, vox_vol),
+                (blocks[2] * blocks[1], blocks[0]),
+                (self._vox_block[2], self._vox_block[1]),
+                (textures, volume, start, nr_projs, *volume.shape, vox_vol),
             )
 
     @staticmethod
@@ -314,11 +339,11 @@ class VoxelDrivenConeBP(BaseKernel):
             fDen = || u v (s-x) || / || u v s ||
             i.e., scale = 1 / || u v s ||
         """
-        if isinstance(projection_geometry, GeometrySequence):
+        if isinstance(projection_geometry, ProjectionGeometrySequence):
             geom_seq = copy.deepcopy(projection_geometry)
         else:
             # list, tuple, or ndarray
-            geom_seq = GeometrySequence.fromList(projection_geometry)
+            geom_seq = ProjectionGeometrySequence.fromList(projection_geometry)
 
         xp = geom_seq.xp
         normalize_(geom_seq, volume_geometry)

@@ -1,3 +1,4 @@
+import importlib.resources
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from importlib import resources
@@ -55,7 +56,7 @@ def copy_to_texture(
         Array to be used in the texture. Must be pitched when `type` is
         'pitch2d'.
     texture_type : str, optional
-        Type of texture to be created. Can be 'array' or 'pitch2d'.
+        Type of texture to be created. Can be 'array', 'array2d', or 'pitch2d'.
         Defaults to 'array'. An 'array' texture may be faster, but requires
         the array to be copied to a CUDA array first, which increases memory
         usage.
@@ -71,13 +72,13 @@ def copy_to_texture(
     if not (isinstance(array, cp.ndarray) or isinstance(array, np.ndarray)):
         raise TypeError(f"Expected a NumPy or CuPy array, got {type(array)} instead.")
 
-    if not array.flags["C_CONTIGUOUS"]:
-        raise ValueError("Array must be C-contiguous.")
-
     if not array.dtype == cp.float32:
         raise ValueError(f"Array must be of type float32, got {array.dtype} instead.")
 
     if texture_type.lower() == "array" or texture_type.lower() == "array2d":
+        if not array.flags["C_CONTIGUOUS"]:
+            raise ValueError("Array must be C-contiguous.")
+
         assert (
             array.ndim == 2
             and texture_type.lower() == "array2d"
@@ -90,13 +91,16 @@ def copy_to_texture(
         cuda_array = txt.CUDAarray(
             _channel_desc, *reversed(array.shape), 1 if layered else 0
         )
-        cuda_array.copy_from(array, cp.cuda.get_current_stream())
+        cuda_array.copy_from(array, cp.cuda.get_current_stream())  # asynchronous copy
         resource_desc = txt.ResourceDescriptor(cudaResourceTypeArray, cuArr=cuda_array)
         return txt.TextureObject(resource_desc, _texture_desc_3d)
     elif texture_type.lower() == "pitch2d":
         assert array.ndim == 2
         array_base = array.base if array.base is not None else array
         assert array_base.ndim == 2
+        if not array_base.flags["C_CONTIGUOUS"]:
+            raise ValueError("Base array must be C-contiguous.")
+
         if not ispitched(array_base):
             raise ValueError(
                 "Array data `array.base` needs to have pitched "
@@ -162,23 +166,13 @@ class cuda_float4:
 class BaseKernel(ABC):
     """Abstract base class for CUDA kernels"""
 
-    FLOAT_DTYPE = cp.float32
-    SUPPORTED_DTYPES = [cp.float32]
-
     @abstractmethod
-    def __init__(self, resource: str, package="kernelkit.cuda"):
-        """Initialize the kernel
+    def __init__(self, cuda_source: str):
+        """Initialize the kernel"""
 
-        Parameters
-        ----------
-        resource : str
-            Name of the resource file containing the kernel source
-        package : str
-            Name of the package where the resource file is located
-        """
-        # we cannot load the source immediately because some template
-        # arguments may only be known at call time.
-        self._cuda_source = resources.read_text(package=package, resource=resource)
+        # we cannot parse the source immediately because some Jinja2 template
+        # arguments may only be known at compile time.
+        self._cuda_source = cuda_source
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> type(None):
@@ -192,7 +186,9 @@ class BaseKernel(ABC):
         return self._cuda_source
 
     def _compile(
-        self, name_expressions: Sequence[str], template_kwargs: dict
+        self,
+        name_expressions: Sequence[str],
+        template_kwargs: dict = None
     ) -> cp.RawModule:
         """Renders Jinja2 template and imports kernel in CuPy
 
@@ -204,15 +200,18 @@ class BaseKernel(ABC):
             Dictionary of template arguments to be rendered in the source code
             using Jinja2
         """
+        template_kwargs = template_kwargs or {}
         if len(template_kwargs) == 0:
-            print(f"Compiling kernel {self.__class__.__name__}...")
+            print(f"Compiling kernel {self.__class__.__name__}:"
+                  f" {', '.join(name_expressions)}...")
         else:
             print(
-                f"Compiling kernel {self.__class__.__name__}"
+                f"Compiling kernel {self.__class__.__name__}:"
+                f" {', '.join(name_expressions)}"
                 f" with arguments {template_kwargs}"
                 "..."
             )
-        self._compiled_template_kwargs = template_kwargs
+        self.__compiled_template_kwargs = template_kwargs
         code = jinja2.Template(
             self.cuda_source, undefined=jinja2.StrictUndefined
         ).render(**template_kwargs)
@@ -220,11 +219,20 @@ class BaseKernel(ABC):
             code=code,
             # --std is required for name expressions
             # -line-info for debugging
-            options=("--std=c++11",),  # TODO: c++17 is allowed from CUDA 12
+            options=("--std=c++17",),  # TODO: c++17 is allowed from CUDA 12
             name_expressions=name_expressions,
         )
         # TODO(Adriaan): add `jittify=False` when compilation is slow?
         return self._module
+
+    @property
+    def _compiled_template_kwargs(self):
+        try:
+            return self.__compiled_template_kwargs
+        except AttributeError:
+            raise KernelNotCompiledException(
+                f"Cannot query the compiled template arguments of kernel "
+                f"{self.__class__.__name__} before compilation.")
 
     @property
     def is_compiled(self):

@@ -1,20 +1,22 @@
+.. _api_summary:
+
+===========
 API Summary
 ===========
 
 Geometries
-----------
+==========
 
 .. autosummary::
    :toctree: _autosummary
       :maxdepth: 1
+
    kernelkit.VolumeGeometry
    kernelkit.ProjectionGeometry
-   kernelkit.ProjectionGeometry.Beam
+   kernelkit.Beam
    kernelkit.resolve_volume_geometry
    kernelkit.experimental.suggest_volume_extent
    kernelkit.Detector
-   kernelkit.GeometrySequence
-   kernelkit.GeometrySequence.DetectorSequence
    kernelkit.rotate
    kernelkit.rotate_
    kernelkit.scale
@@ -24,7 +26,7 @@ Geometries
 
 
 Kernels
--------
+=======
 
 .. autosummary::
    :toctree: _autosummary
@@ -34,26 +36,25 @@ Kernels
    kernelkit.kernel.copy_to_texture
    kernelkit.kernel.copy_to_symbol
    kernelkit.kernels.VoxelDrivenConeBP
-   kernelkit.kernels.VoxelDrivenConeBP.TextureFetching
    kernelkit.kernels.RayDrivenConeFP
 
 
 Projectors
-----------
+==========
 
 .. autosummary::
    :toctree: _autosummary
       :maxdepth: 1
 
    kernelkit.BaseProjector
-   kernelkit.ConeBackprojector
-   kernelkit.ConeProjector
-   kernelkit.toolbox_support.ConeProjectorAdapter
-   kernelkit.toolbox_support.ConeBackprojectorAdapter
+   kernelkit.BackProjector
+   kernelkit.ForwardProjector
+   kernelkit.toolbox_support.ForwardProjector
+   kernelkit.toolbox_support.BackProjector
 
 
 Algorithms
-----------
+==========
 
 Reference algorithms:
 
@@ -77,8 +78,8 @@ Operator-style algorithm building blocks:
    kernelkit.XrayTransform
 
 
-Miscallaneous
--------------
+Miscellaneous
+=============
 
 Helpers for cone and Fourier-based algorithms:
 

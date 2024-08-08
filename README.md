@@ -1,33 +1,31 @@
 ## The ASTRA KernelKit project
 ASTRA KernelKit is part of the `ASTRA Toolbox` project.
 
-> [!WARNING]
-> This is a pre-release version. We're in the process of stabilizing the API,
-> writing tests and adding documentation. For the latest version, check out
-> the [development branch](https://github.com/adriaangraas/astra-kernelkit/tree/develop).
-
-[![Documentation Status](https://readthedocs.org/projects/astra-kernelkit/badge/?version=latest)](https://astra-kernelkit.readthedocs.io/en/latest/?badge=latest)
-[![PyPI version](https://badge.fury.io/py/astra-kernelkit.svg)](https://badge.fury.io/py/astra-kernelkit)
-[![Build Status](https://travis-ci.com/astra-kernelkit/astra-kernelkit.svg?branch=master)](https://travis-ci.com/astra-kernelkit/astra-kernelkit)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/astra-kernelkit)](https://pypi.org/project/astra-kernelkit/)
-[![PyPI - License](https://img.shields.io/pypi/l/astra-kernelkit)]()
+> [!NOTE] 
+> Last update is August 8th to verison 1.0.0rc2. This contains updated 3D conebeam
+> forward and backprojectors and some documentation. Parallel beam and more examples
+> are to follow soon.
+> 
+> Find documentation at [https://kernelkit.gra.as/](https://kernelkit.gra.as/).
+> 
 
 # ASTRA KernelKit
 
 ASTRA KernelKit is an all-Python tomographic reconstruction package, leveraging 
-the tomographic projection kernels of the [ASTRA Toolbox](https://github.com/astra-toolbox/astra-toolbox) 
+the GPU-accelerated tomographic projection kernels of the [ASTRA Toolbox](https://github.com/astra-toolbox/astra-toolbox) 
 using [CuPy](https://cupy.dev/).
  - Develop, explore and debug algorithms and projectors with the Python ecosystem.
  - Use CUDA features such as graphs and unified memory for maximum performance.
- - Kernels are compiled during the script with NVRTC and [Jinja2](https://jinja.palletsprojects.com/). No complicated builds.
+ - Kernels are compiled during the script with NVRTC and [Jinja2](https://jinja.palletsprojects.com/). No 
+   complicated build system, and yet easy customization of kernels.
  - Easy to install and integrates well with PyTorch and other GPU frameworks.
 
 ## Installation
 KernelKit depends on [CuPy](https://docs.cupy.dev/en/stable/install.html), which
-we recommend to be installed first. Refer to our [installation instructions](https://kernelkit.readthedocs.io/en/latest/installation.html).
+we recommend to be installed first. Refer to our [installation instructions](https://kernelkit.gra.as/general/install.html).
 
 ## Getting started
-See the [documentation](https://astra-kernelkit.readthedocs.io/en/latest/) for more information.
+See the [documentation](https://kernelkit.gra.as) for more information.
 
 ## License
 The ASTRA KernelKit and ASTRA Toolbox projects are freely available and open source under the GPLv3 license.

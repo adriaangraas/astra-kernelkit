@@ -12,21 +12,18 @@ from kernelkit.projector import (
     VolumeGeometryNotSetError,
     VolumeNotSetError,
 )
-from kernelkit.geom.proj import ProjectionGeometry
+from kernelkit.geom.proj import Beam, ProjectionGeometry
 from kernelkit.geom.vol import VolumeGeometry
 
 
 def _geom2astra(g: ProjectionGeometry) -> list[float]:
     """Convert a `kernelkit.ProjectionGeometry` to an ASTRA Toolbox vector."""
 
-    def swp(x):
-        return np.array((x[1], x[0], x[2]))
-
     return [
-        *swp(g.source_position),
-        *swp(g.detector_position),
-        *(swp(g.u) * g.detector.pixel_width),
-        *(swp(g.v) * g.detector.pixel_height),
+        *g.source_position,
+        *g.detector_position,
+        *np.asarray(g.u) * g.detector.pixel_width,
+        *np.asarray(g.v) * g.detector.pixel_height
     ]
 
 
@@ -140,8 +137,15 @@ class BaseProjectorAdapter(BaseProjector, ABC):
         return 1, 0, 2
 
     @property
-    def volume_geometry(self) -> VolumeGeometry:
-        return self._vol_geom
+    def volume_geometry(self):
+        try:
+            return self._vol_geom
+        except AttributeError:
+            raise VolumeGeometryNotSetError(
+                f"Volume geometry not set in '{self.__class__.__name__}'. "
+                f"Please set the volume geometry using "
+                f"`{self.__class__.__name__}.volume_geometry`."
+            )
 
     @volume_geometry.setter
     def volume_geometry(self, value: VolumeGeometry):
@@ -169,10 +173,10 @@ class BaseProjectorAdapter(BaseProjector, ABC):
             vol_shp[1],
             vol_shp[0],
             vol_shp[2],
-            ext_min[1],
-            ext_max[1],
             ext_min[0],
             ext_max[0],
+            ext_min[1],
+            ext_max[1],
             ext_min[2],
             ext_max[2],
         )
@@ -187,8 +191,15 @@ class BaseProjectorAdapter(BaseProjector, ABC):
             pass
 
     @property
-    def projection_geometry(self):
-        return self._proj_geom
+    def projection_geometry(self) -> list[ProjectionGeometry]:
+        try:
+            return self._proj_geom
+        except AttributeError:
+            raise ProjectionGeometryNotSetError(
+                f"Projection geometry not set in '{self.__class__.__name__}'. "
+                f"Please set the projection geometry using "
+                f"`{self.__class__.__name__}.projection_geometry`."
+            )
 
     @projection_geometry.setter
     def projection_geometry(self, value: list[ProjectionGeometry]):
@@ -198,7 +209,7 @@ class BaseProjectorAdapter(BaseProjector, ABC):
             pass
 
         for p in value:
-            if p.beam != ProjectionGeometry.Beam.CONE.value:
+            if p.beam != Beam.CONE.value:
                 raise NotImplementedError(
                     "Only conebeam geometries are supported at the moment."
                 )
@@ -295,7 +306,7 @@ class BaseProjectorAdapter(BaseProjector, ABC):
         return self._projections if mode == "FP" else self._volume
 
 
-class ForwardProjectorAdapter(BaseProjectorAdapter):
+class ForwardProjector(BaseProjectorAdapter):
     """Adapter for ASTRA forward projectors."""
 
     def __call__(self, additive=False):
@@ -315,7 +326,7 @@ class ForwardProjectorAdapter(BaseProjectorAdapter):
         super().directFPBP("FP", additive=additive)
 
 
-class BackprojectorAdapter(BaseProjectorAdapter):
+class BackProjector(BaseProjectorAdapter):
     """Adapter for ASTRA backprojectors."""
 
     def __call__(self, additive=False):

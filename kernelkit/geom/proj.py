@@ -74,16 +74,35 @@ class Detector:
     __dict__ = {}
 
 
+class Beam(Enum):
+    """Beam type."""
+
+    CONE = "cone"
+    PARALLEL = "parallel"
+    
+    @classmethod
+    def from_string(cls, value: str):
+        """Convert a string to a Beam enum value."""
+        value = value.lower()
+        for beam in cls:
+            if beam.value == value:
+                return beam
+        raise ValueError(f"Invalid beam type: '{value}'")
+
+
+def process_beam_type(arg) -> Beam:
+    if isinstance(arg, Beam):
+        return arg
+    elif isinstance(arg, str):
+        return Beam.from_string(arg)
+    else:
+        raise TypeError("Argument must be of type `str` or `Beam`.")
+
+
 class ProjectionGeometry:
     """Single 3D projection with one source and one detector."""
 
     xp = np  # using CuPy is possible, but not tested
-
-    class Beam(Enum):
-        """Beam type."""
-
-        CONE = "cone"
-        PARALLEL = "parallel"
 
     def __init__(
         self,
@@ -128,9 +147,7 @@ class ProjectionGeometry:
         self.detector = detector
         self.u = self.xp.array(u, dtype=self.xp.float32)
         self.v = self.xp.array(v, dtype=self.xp.float32)
-        if beam not in self.Beam:
-            raise ValueError(f"Beam type must be one of {self.Beam}, got {beam}.")
-        self.beam = beam.value
+        self.beam = process_beam_type(beam)
 
     @property
     def detector_extent_min(self):
@@ -161,7 +178,8 @@ class ProjectionGeometry:
             The horizontal u-vector in the detector frame. Must be a unit
             vector."""
         if not self.xp.allclose(np.linalg.norm(value), 1.0):
-            raise ValueError("`u` must be a unit vector to avoid ambiguity.")
+            raise ValueError("`u` must be a unit vector. Consider normalizing"
+                             " `u` using `u /= np.linalg.norm(u)`.")
         if self.xp.allclose(value, 0.0):
             raise ValueError("`u` must not be zero.")
         # TODO(Adriaan): can only be checked when u, v are set at the same
@@ -186,7 +204,8 @@ class ProjectionGeometry:
             The vertical v-vector in the detector frame. Must be a unit
             vector."""
         if not self.xp.allclose(np.linalg.norm(value), 1.0):
-            raise ValueError("`v` must be a unit vector.")
+            raise ValueError("`v` must be a unit vector. Consider normalizing"
+                             " `v` using `v /= np.linalg.norm(v)`.")
         if self.xp.allclose(value, 0.0):
             raise ValueError("`v` must not be zero.")
         # TODO(Adriaan): can only be checked when u, v are set at the same
@@ -222,7 +241,7 @@ class ProjectionGeometry:
 
 
 @dataclass
-class GeometrySequence:
+class ProjectionGeometrySequence:
     """Structure-of-arrays geometry data object.
 
     Parameters
@@ -237,6 +256,8 @@ class GeometrySequence:
         The vertical v-vector in the detector frame.
     detector : DetectorSequence
         The detector data.
+    beam : array-like
+        The beam type.
     xp : array-like, optional
         The array library to use. If None, it defaults to numpy.
     """
@@ -288,6 +309,7 @@ class GeometrySequence:
     u: xp.ndarray
     v: xp.ndarray
     detector: DetectorSequence
+    beam: Beam
 
     def __len__(self):
         return len(self.source_position)
@@ -304,7 +326,7 @@ class GeometrySequence:
 
     @classmethod
     def fromList(cls, geometries: list[ProjectionGeometry], xp=None):
-        """Create a GeometrySequence from a list of ProjectionGeometry objects.
+        """Create a ProjectionGeometrySequence from a list of ProjectionGeometry objects.
 
         Parameters
         ----------
@@ -315,6 +337,8 @@ class GeometrySequence:
         """
         if xp is None:
             xp = cls.xp
+
+        assert np.all([geometries[0].beam == g.beam for g in geometries])
 
         def _cvrt(arr, dtype):
             return xp.ascontiguousarray(xp.array(arr, dtype=dtype))
@@ -335,6 +359,7 @@ class GeometrySequence:
             u=_cvrt([g.u for g in geometries], xp.float32),
             v=_cvrt([g.v for g in geometries], xp.float32),
             detector=ds,
+            beam=geometries[0].beam,
         )
         return gs
 
@@ -352,12 +377,13 @@ class GeometrySequence:
             pixel_width=self.detector.pixel_width[indices],
             pixel_height=self.detector.pixel_height[indices],
         )
-        gs = GeometrySequence(
+        gs = ProjectionGeometrySequence(
             source_position=self.source_position[indices],
             detector_position=self.detector_position[indices],
             u=self.u[indices],
             v=self.v[indices],
             detector=ds,
+            beam=self.beam
         )
         return gs
 
@@ -371,7 +397,8 @@ class GeometrySequence:
             detector_position=xp.copy(self.detector_position),
             u=xp.copy(self.u),
             v=xp.copy(self.v),
-            detector=GeometrySequence.DetectorSequence(
+            beam=xp.copy(self.beam),
+            detector=ProjectionGeometrySequence.DetectorSequence(
                 rows=xp.copy(self.detector.rows),
                 cols=xp.copy(self.detector.cols),
                 pixel_width=xp.copy(self.detector.pixel_width),
@@ -388,7 +415,7 @@ def shift(geom: ProjectionGeometry, vector: np.ndarray) -> ProjectionGeometry:
 
     Parameters
     ----------
-    geom: ProjectionGeometry or GeometrySequence
+    geom: ProjectionGeometry or ProjectionGeometrySequence
     vector: numpy.ndarray, cupy.ndarray, shape (3,), or (N, 3)
     for GeometrySequence
 
@@ -407,7 +434,7 @@ def shift_(geom: ProjectionGeometry, vector: np.ndarray) -> None:
 
     Parameters
     ----------
-    geom: ProjectionGeometry or GeometrySequence
+    geom: ProjectionGeometry or ProjectionGeometrySequence
     vector: numpy.ndarray, cupy.ndarray, shape (3,), or (N, 3)
     for GeometrySequence
     """
@@ -455,7 +482,7 @@ def scale_(geom: ProjectionGeometry, factor: float) -> None:
 
     Parameters
     ----------
-    geom : ProjectionGeometry or GeometrySequence
+    geom : ProjectionGeometry or ProjectionGeometrySequence
     factor : float
         Factor by which to enlarge or shrink the geometry
     """
@@ -484,7 +511,7 @@ def rotate(
 
     Parameters
     ----------
-    geom : ProjectionGeometry or GeometrySequence
+    geom : ProjectionGeometry or ProjectionGeometrySequence
     roll : float
         Rotation around x-axis
     pitch : float
@@ -498,11 +525,12 @@ def rotate(
     """
     ngeom = copy.deepcopy(geom)
 
-    RT = angles2mat(roll, pitch, yaw).T
-    ngeom.source_position = RT @ geom.source_position
-    ngeom.detector_position = RT @ geom.detector_position
-    ngeom.u = RT @ geom.u
-    ngeom.v = RT @ geom.v
+    R = angles2mat(roll, pitch, yaw)
+    ngeom.source_position = R @ geom.source_position
+    ngeom.detector_position = R @ geom.detector_position
+    ngeom.u = R @ geom.u
+    ngeom.v = R @ geom.v
+    ngeom.beam = geom.beam
     return ngeom
 
 
@@ -513,7 +541,7 @@ def rotate_(
 
     Parameters
     ----------
-    geom : ProjectionGeometry or GeometrySequence
+    geom : ProjectionGeometry or ProjectionGeometrySequence
     roll : float
         Rotation around x-axis
     pitch : float

@@ -5,7 +5,8 @@ import cupyx as cpx
 import numpy as np
 from tqdm import tqdm
 
-from kernelkit.geom.proj import ProjectionGeometry
+from kernelkit.data import aspitched, pitched_like
+from kernelkit.geom.proj import Beam, ProjectionGeometry
 from kernelkit.geom.vol import VolumeGeometry
 from kernelkit.kernel import BaseKernel
 from kernelkit.kernels.cone_bp import VoxelDrivenConeBP
@@ -107,6 +108,7 @@ def bp(
 
     # TODO(Adriaan): rewrite using the `XrayTransform` class
     kwargs.update(projection_axes=projection_axes)
+    kwargs.update(beam=projection_geometry[0].beam)
     ptor = BackProjector(
         VoxelDrivenConeBP(**kwargs) if kernel is None else kernel,
         texture_type="layered",
@@ -201,11 +203,12 @@ def fdk(
     References
     ----------
     .. [1] Feldkamp, L. A., Davis, L. C., & Kress, J. W. (1984). Practical
-              cone-beam algorithm. Journal of the Optical Society of America A,
-                1(6), 612. https://doi.org/10.1364/JOSAA.1.000612
+        cone-beam algorithm. Journal of the Optical Society of America A,
+        1(6), 612. https://doi.org/10.1364/JOSAA.1.000612
+
     """
     for p in projection_geometry:
-        if p.beam != "cone":
+        if p.beam != Beam.CONE:
             raise NotImplementedError(
                 "Only cone beam geometry is supported at the moment."
             )
@@ -265,12 +268,9 @@ def sirt(
         three arguments: the iteration number, the volume, and the residual.
         Default is None.
     residual_every : int, optional
-        How often to compute the residual. Default is 10. Note that computing
-        the residual is expensive and may slow down the reconstruction. It is
-        best to set this value conservatively.
-    stream : cupy.cuda.Stream, optional
-        The CUDA stream to use. By default, a new stream is created and used
-        until the function returns.
+        How often to compute the MSE residual for display. Default is every 10
+        iterations. Note that computing the residual is expensive and may slow
+        down the reconstruction. It is best to set this value conservatively.
     """
     if len(projections) != len(projection_geometry):
         raise ValueError("Number of projections does not match number of geometries.")
@@ -278,7 +278,8 @@ def sirt(
     xp_vol = cp
 
     # prevent copying if already in GPU memory, otherwise copy to GPU
-    y = [xp_proj.array(p, copy=False) for p in projections]
+    # y = [xp_proj.array(p, copy=False) for p in projections]
+    y = [aspitched(p, xp=xp_proj) for p in projections]
     x = xp_vol.zeros(volume_geometry.shape, cp.float32)  # output volume
     x_tmp = xp_vol.ones_like(x)
 
@@ -318,7 +319,7 @@ def sirt(
 
     # compute scaling matrix C
     # y_tmp = [aspitched(cp.ones_like(p)) for p in y]
-    y_tmp = [xp_proj.ones_like(p) for p in y]  # intermediate variable
+    y_tmp = [pitched_like(p, xp_proj, fill=1.) for p in y]  # intermediate variable
     C = A_T(y_tmp)
     xp_vol.divide(1.0, C, out=C)  # TODO(Adriaan): there is no `where=` in CuPy
     C[C == xp_vol.infty] = 0.0
@@ -342,11 +343,14 @@ def sirt(
             p_tmp -= p  # residual
             p_tmp *= r
 
-        E = residual_every  # compute residual norm every `E`
-        if i % E == 0:  # the following operation is expensive
-            res_norm = str(sum([xp_proj.linalg.norm(p) for p in y_tmp]))
-        desc = "SIRT [" + "*" * (i % E) + "." * (E - i % E) + "]"
-        bar.set_description(f"{desc}: {res_norm})")
+        if residual_every is not None:
+            E = residual_every  # compute residual norm every `E`
+            if i % E == 0:  # the following operation is expensive
+                res_norm = str(sum([xp_proj.linalg.norm(p) for p in y_tmp]))
+            desc = "SIRT [" + "*" * (i % E) + "." * (E - i % E) + "]"
+            bar.set_description(f"{desc}: {res_norm})")
+        else:
+            bar.set_description(f"SIRT")
 
         # backproject residual into `x_tmp`, apply C
         A_T(y_tmp, out=x_tmp)

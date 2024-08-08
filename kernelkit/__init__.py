@@ -1,4 +1,7 @@
-__version__ = "1.0.0-alpha.1"
+__version__ = "1.0.0-alpha.2"
+
+KERNELKIT_VERSION = __version__
+KERNELKIT_CUDA_SOURCES = "kernelkit.cuda"
 
 from .operator import *
 from .algo import fp, bp, fdk, sirt
@@ -10,4 +13,6 @@ from . import kernel
 from . import kernels
 from . import experimental
 from . import processing
-from . import toolbox_support
+
+# don't import automatically to avoid ASTRA dependency
+# from . import toolbox_support
