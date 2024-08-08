@@ -1,0 +1,550 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" data-theme="light">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Geometries &#8212; ASTRA KernelKit</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "light";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=a3416100" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=6414af87" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../_static/documentation_options.js?v=c5f1023d"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'user_guide/geometries';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Projectors" href="projectors.html" />
+    <link rel="prev" title="About / FAQ" href="../general/about.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="light">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Pre-release version.</div>
+</aside>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">ASTRA KernelKit</p>
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../general/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../general/tomography.html">X-ray CT projectors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../general/about.html">About / FAQ</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Geometries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="projectors.html">Projectors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/api_summary.html">API Summary</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/concepts.html">KernelKit concepts</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/adriaangraas/astra-kernelkit" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Geometries</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#conventions">Conventions</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#list-based-scan-geometries">List-based scan geometries</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#single-projection-geometry">Single projection geometry</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#building-a-list-based-scan-geometry">Building a list-based scan geometry</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#volume-geometry">Volume geometry</a></li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="geometries">
+<span id="id1"></span><h1>Geometries<a class="headerlink" href="#geometries" title="Link to this heading">#</a></h1>
+<p>Geometries encode the positions of the source(s), detector(s), and object(s) for
+multiple angles or timesteps. In KernelKit they are behave as plain-old Python
+objects that hold values for the parameters required inside the projectors and
+kernels. Different kernels may support different geometries (e.g., conebeam or parallel beam, 2D or 3D)
+and may choose different parametrizations (e.g., support rotated detectors).</p>
+<p>In KernelKit we introduce two definitions. A <em>scan geometry</em> encodes all
+parameters associated with multiple projections. A <em>volume geometry</em> encodes the
+position and rotation of the reconstruction volume at the center of the system.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="overview">
+<thead>
+<tr class="row-odd"><th class="head"><p>Scan geometries</p></th>
+<th class="head"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Sequence[kernelkit.ProjectionGeometry]</span></code></p></td>
+<td><p>A <a class="reference internal" href="#list-based-scan-geometries"><span class="std std-ref">list-based flexible geometry</span></a>
+for standard ASTRA kernels.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Volume geometries</p></th>
+<th class="head"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">kernelkit.VolumeGeometry</span></code></p></td>
+<td><p>Standard description of a
+<a class="reference internal" href="#volume-geometry"><span class="std std-ref">single reconstruction volume</span></a>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="conventions">
+<span id="id2"></span><h2>Conventions<a class="headerlink" href="#conventions" title="Link to this heading">#</a></h2>
+<p>These conventions hold throughout for all Python code:</p>
+<ul>
+<li><p><strong>Vectors are in</strong> <span class="math notranslate nohighlight">\((x, y, z)\)</span> <strong>order.</strong></p>
+<p>Unless indicated otherwise, vector notation follows <span class="math notranslate nohighlight">\((x, y, z)\)</span>. An
+example are <code class="code highlight python docutils literal highlight-python"><span class="n">extent_min</span></code> and <code class="code highlight python docutils literal highlight-python"><span class="n">extent_max</span></code> arguments, that
+define the size of a reconstruction volume in a <code class="docutils literal notranslate"><span class="pre">VolumeGeometry</span></code>.</p>
+<p>Note: data arrays, e.g., <a class="extlink-cupy reference external" href="https://docs.cupy.dev/en/stable/reference/generated/cupy.ndarray.html">cupy.ndarray</a>, can still use alternative axis orders, such as <span class="math notranslate nohighlight">\((z, y, x)\)</span> in ASTRA Toolbox.</p>
+</li>
+<li><p><strong>Right-handed coordinate system.</strong></p>
+<p>The <span class="math notranslate nohighlight">\(z\)</span>-axis points along the axis of rotation (typically vertical), the
+<span class="math notranslate nohighlight">\(x\)</span>-axis points (horizontal) to the right, and the <span class="math notranslate nohighlight">\(y\)</span>-axis
+points (horizontal) into the page.</p>
+</li>
+<li><p><strong>Angles are in radians, and use roll-pitch-yaw (RPY) format.</strong></p>
+<p>Roll is rotation about the <span class="math notranslate nohighlight">\(x\)</span>-axis, pitch is rotation about the <span class="math notranslate nohighlight">\(y\)</span>-axis,
+and yaw is rotation about the <span class="math notranslate nohighlight">\(z\)</span>-axis. We take extrinsic Euler angles, meaning that the
+rotation is applied to the fixed coordinate system.</p>
+</li>
+</ul>
+</section>
+<section id="list-based-scan-geometries">
+<span id="scan-geometries"></span><span id="id3"></span><h2>List-based scan geometries<a class="headerlink" href="#list-based-scan-geometries" title="Link to this heading">#</a></h2>
+<p>ASTRA KernelKit allows working with arbitrary (non-circular) geometries.
+Standard projectors require a Python <code class="code highlight python docutils literal highlight-python"><span class="n">Sequence</span><span class="p">[</span><span class="n">ProjectionGeometry</span><span class="p">]</span></code>, i.e., a list
+or tuple with one geometry for each projection angle or timestep. List-based scan geometries
+can be viewed as object-oriented wrappers for ASTRA Toolbox vector geometries.</p>
+<section id="single-projection-geometry">
+<h3>Single projection geometry<a class="headerlink" href="#single-projection-geometry" title="Link to this heading">#</a></h3>
+<p>A <a class="reference internal" href="../reference/_autosummary/kernelkit.ProjectionGeometry.html#kernelkit.ProjectionGeometry" title="kernelkit.ProjectionGeometry"><code class="xref py py-class docutils literal notranslate"><span class="pre">kernelkit.ProjectionGeometry</span></code></a> is a description that parametrizes the
+acquisition of a single-angle single-source single-detector set-up:</p>
+<ul class="simple">
+<li><p>a source position, <span class="math notranslate nohighlight">\(\mathbf s \in \mathbb{R}^3\)</span>;</p></li>
+<li><p>a detector center, <span class="math notranslate nohighlight">\(\mathbf d \in \mathbb{R}^3\)</span>;</p></li>
+<li><p>unit vectors <span class="math notranslate nohighlight">\(\hat{\mathbf u} \in \mathbb{R}^3\)</span>, <span class="math notranslate nohighlight">\(\hat{\mathbf v} \in \mathbb{R}^3\)</span>, the horizontal and vertical axes of the detector;</p></li>
+<li><p>a reference to a <a class="reference internal" href="../reference/_autosummary/kernelkit.Detector.html#kernelkit.Detector" title="kernelkit.Detector"><code class="xref py py-class docutils literal notranslate"><span class="pre">kernelkit.Detector</span></code></a> object.</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">kernelkit</span> <span class="kn">import</span> <span class="n">ProjectionGeometry</span><span class="p">,</span> <span class="n">Detector</span><span class="p">,</span> <span class="n">Beam</span>
+
+<span class="c1"># Create a detector</span>
+<span class="n">detector</span> <span class="o">=</span> <span class="n">Detector</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="n">pixel_width</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">pixel_height</span><span class="o">=</span><span class="mf">1.</span><span class="p">)</span>
+
+<span class="c1"># Create a projection geometry</span>
+<span class="n">geometry</span> <span class="o">=</span> <span class="n">ProjectionGeometry</span><span class="p">(</span>
+    <span class="n">source_position</span><span class="o">=</span><span class="p">[</span><span class="o">-</span><span class="mi">100</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>  <span class="c1"># Note: (x, y, z)</span>
+    <span class="n">detector_position</span><span class="o">=</span><span class="p">[</span><span class="mi">100</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="c1"># source-det are aligned on the x-axis</span>
+    <span class="n">u</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>                   <span class="c1"># pointing in the y-direction</span>
+    <span class="n">v</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>                   <span class="c1"># pointing in the z-direction</span>
+    <span class="n">detector</span><span class="o">=</span><span class="n">detector</span><span class="p">,</span>
+    <span class="n">beam</span><span class="o">=</span><span class="n">Beam</span><span class="o">.</span><span class="n">CONE</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Remarks:</p>
+<ul class="simple">
+<li><p>Detector pixels are counted in the <span class="math notranslate nohighlight">\((-\hat{\mathbf u}, -\hat{\mathbf v})\)</span> direction. E.g., if <span class="math notranslate nohighlight">\(z\)</span> points up, and <span class="math notranslate nohighlight">\(\hat{\mathbf v} = (0, 0, 1)\)</span>, then the first row is the top row of the detector.</p></li>
+<li><p><code class="code highlight python docutils literal highlight-python"><span class="n">Beam</span><span class="o">.</span><span class="n">CONE</span></code> and <code class="code highlight python docutils literal highlight-python"><span class="n">Beam</span><span class="o">.</span><span class="n">PARALLEL</span></code> denote divergent and parallel sources. For parallel beam, <cite>source_direction</cite> may be specified in place of <cite>source_position</cite>.</p></li>
+</ul>
+</section>
+<section id="building-a-list-based-scan-geometry">
+<h3>Building a list-based scan geometry<a class="headerlink" href="#building-a-list-based-scan-geometry" title="Link to this heading">#</a></h3>
+<p>A list-based scan geometry can be assembled from a sequence of individual
+<code class="docutils literal notranslate"><span class="pre">ProjectionGeometry</span></code> objects. Alternatively, <a class="reference internal" href="../reference/_autosummary/kernelkit.rotate.html#kernelkit.rotate" title="kernelkit.rotate"><code class="xref py py-func docutils literal notranslate"><span class="pre">kernelkit.rotate()</span></code></a> and
+<a class="reference internal" href="../reference/_autosummary/kernelkit.shift.html#kernelkit.shift" title="kernelkit.shift"><code class="xref py py-func docutils literal notranslate"><span class="pre">kernelkit.shift()</span></code></a> to rotate or shift existing
+geometries.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># 100 equidistantially spaced angles between 0 and 2π</span>
+<span class="n">angles</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+<span class="c1"># Create 100 rotated copies around the z-axis, for a circular scan</span>
+<span class="n">circular_geometry</span> <span class="o">=</span> <span class="p">[</span><span class="n">kernelkit</span><span class="o">.</span><span class="n">rotate</span><span class="p">(</span><span class="n">geometry</span><span class="p">,</span> <span class="n">yaw</span><span class="o">=</span><span class="n">phi</span><span class="p">)</span> <span class="k">for</span> <span class="n">phi</span> <span class="ow">in</span> <span class="n">angles</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Additional technical remarks:</p>
+<ul class="simple">
+<li><p>Functions <a class="reference internal" href="../reference/_autosummary/kernelkit.rotate_.html#kernelkit.rotate_" title="kernelkit.rotate_"><code class="xref py py-func docutils literal notranslate"><span class="pre">kernelkit.rotate_()</span></code></a> and <a class="reference internal" href="../reference/_autosummary/kernelkit.shift_.html#kernelkit.shift_" title="kernelkit.shift_"><code class="xref py py-func docutils literal notranslate"><span class="pre">kernelkit.shift_()</span></code></a> exist to modify geometries in-place.</p></li>
+<li><p>List-based geometries are an array-of-structures type of object. <code class="xref py py-func docutils literal notranslate"><span class="pre">kernelkit.ProjectionGeometrySequence()</span></code> can be used to convert lists into an structure-of-arrays object that is more suitable for vectorized operations.</p></li>
+<li><p>Currently kernels do not support lists with mixed detectors.</p></li>
+</ul>
+</section>
+</section>
+<section id="volume-geometry">
+<span id="id4"></span><h2>Volume geometry<a class="headerlink" href="#volume-geometry" title="Link to this heading">#</a></h2>
+<p>The volume geometry, <a class="reference internal" href="../reference/_autosummary/kernelkit.VolumeGeometry.html#kernelkit.VolumeGeometry" title="kernelkit.VolumeGeometry"><code class="xref py py-class docutils literal notranslate"><span class="pre">kernelkit.VolumeGeometry</span></code></a>, is a data container for
+the position, size, and rotation of the reconstruction volume. In CT it is
+common to use a uniform discretization of the volume. The specification
+therefore also requires a voxel size.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">kernelkit</span> <span class="kn">import</span> <span class="n">VolumeGeometry</span><span class="p">,</span> <span class="n">resolve_volume_geometry</span>
+
+<span class="c1"># Create a volume geometry</span>
+<span class="n">cube</span> <span class="o">=</span> <span class="n">VolumeGeometry</span><span class="p">(</span>
+    <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span>  <span class="c1"># 100x100x100 voxels</span>
+    <span class="n">extent_min</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mf">.5</span><span class="p">,</span> <span class="o">-</span><span class="mf">.5</span><span class="p">,</span> <span class="o">-</span><span class="mf">.5</span><span class="p">),</span>  <span class="c1"># lower corner</span>
+    <span class="n">extent_max</span><span class="o">=</span><span class="p">(</span><span class="mf">.5</span><span class="p">,</span> <span class="mf">.5</span><span class="p">,</span> <span class="mf">.5</span><span class="p">),</span>  <span class="c1"># upper corner</span>
+    <span class="n">voxel_size</span><span class="o">=</span><span class="p">(</span><span class="mf">.01</span><span class="p">,</span> <span class="mf">.01</span><span class="p">,</span> <span class="mf">.01</span><span class="p">),</span>  <span class="c1"># must use same units as ProjectionGeometry</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Alternatively, it can be easier to have some of the volume parameters to be
+inferred automatically. This can be done by specifying <code class="code docutils literal notranslate"><span class="pre">None</span></code> for any
+unknowns in the function <a class="reference internal" href="../reference/_autosummary/kernelkit.resolve_volume_geometry.html#kernelkit.resolve_volume_geometry" title="kernelkit.resolve_volume_geometry"><code class="xref py py-func docutils literal notranslate"><span class="pre">kernelkit.resolve_volume_geometry()</span></code></a>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">cube</span><span class="p">:</span> <span class="n">VolumeGeometry</span> <span class="o">=</span> <span class="n">resolve_volume_geometry</span><span class="p">(</span>
+    <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+    <span class="n">extent_min</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mf">.5</span><span class="p">,</span> <span class="o">-</span><span class="mf">.5</span><span class="p">,</span> <span class="o">-</span><span class="mf">.5</span><span class="p">),</span>
+    <span class="n">extent_max</span><span class="o">=</span><span class="p">(</span><span class="mf">.5</span><span class="p">,</span> <span class="mf">.5</span><span class="p">,</span> <span class="mf">.5</span><span class="p">),</span>
+    <span class="n">voxel_size</span><span class="o">=</span><span class="p">(</span><span class="mf">.01</span><span class="p">,</span> <span class="mf">.01</span><span class="p">,</span> <span class="mf">.01</span><span class="p">),</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">cube</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># [100, 100, 100]</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../general/about.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">About / FAQ</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="projectors.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Projectors</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#conventions">Conventions</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#list-based-scan-geometries">List-based scan geometries</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#single-projection-geometry">Single projection geometry</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#building-a-list-based-scan-geometry">Building a list-based scan geometry</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#volume-geometry">Volume geometry</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Adriaan Graas
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2023, ASTRA Toolbox &amp; ASTRA Toolbox contributors.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

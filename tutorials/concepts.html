@@ -1,0 +1,521 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" data-theme="light">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>KernelKit low-level concepts explained in code &#8212; ASTRA KernelKit</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "light";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=a3416100" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=6414af87" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../_static/documentation_options.js?v=c5f1023d"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'tutorials/concepts';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="API Summary" href="../reference/api_summary.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="light">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Pre-release version.</div>
+</aside>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">ASTRA KernelKit</p>
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../general/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../general/tomography.html">X-ray CT projectors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../general/about.html">About / FAQ</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/geometries.html">Geometries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/projectors.html">Projectors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/api_summary.html">API Summary</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">KernelKit concepts</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/adriaangraas/astra-kernelkit" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>KernelKit low-level concepts explained in code</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cuda-sources">1. CUDA sources</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#kernelkit-kernel">2. <code class="code highlight python docutils literal highlight-python"><span class="n">kernelkit</span><span class="o">.</span><span class="n">Kernel</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#kernelkit-projector">3. <code class="code highlight python docutils literal highlight-python"><span class="n">kernelkit</span><span class="o">.</span><span class="n">Projector</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#further-reading">Further reading</a></li>
+</ul>
+</li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="kernelkit-low-level-concepts-explained-in-code">
+<span id="concepts"></span><h1>KernelKit low-level concepts explained in code<a class="headerlink" href="#kernelkit-low-level-concepts-explained-in-code" title="Link to this heading">#</a></h1>
+<p>KernelKit’s main value point is that is it allows users to modify any of the nitty-gritty details of reconstruction – all the way from the GPU level to the level of X-ray backprojection and reprojection. To do so, KernelKit splits reconstruction into CUDA code, Kernel classes, and Projector classes. Projectors are a high-level building block that can be used in algorithms.</p>
+<p>In this bird’s-eye view, we will go from the low-level (CUDA sources) to the high-level (Projectors). We will explain what KernelKit does at each level with a simplified example for 2D fanbeam backprojection. The code supporting this tutorial is available at <a class="extlink-github reference external" href="https://github.com/adriaangraas/astra-kernelkit/blob/main/example/tutorials/kernelkit_concepts.ipynb">example/tutorials/kernelkit_concepts.ipynb</a>.</p>
+<section id="cuda-sources">
+<h2>1. CUDA sources<a class="headerlink" href="#cuda-sources" title="Link to this heading">#</a></h2>
+<p>The core computations of backprojection and reprojection are executed in CUDA kernels, which are comparatively small C++ functions that execute on NVIDIA GPUs using the <a class="reference external" href="https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html">CUDA platform</a>.The following is a simplified example:</p>
+<div class="highlight-C++ notranslate"><div class="highlight"><pre><span></span><span class="n">__global__</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">fan_bp</span><span class="p">(</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">volume</span><span class="p">,</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">sinogram</span><span class="p">,</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">angles</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">nr_angles</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">nr_voxels_x</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">nr_voxels_y</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">nr_pixels</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">src_obj_dist</span><span class="p">,</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">obj_det_dist</span>
+<span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// X, Y are the voxel&#39;s center coordinates of this thread</span>
+<span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">blockDim</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">blockIdx</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">blockDim</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">X</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">nr_voxels_x</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">Y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float</span><span class="p">(</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">nr_voxels_y</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1">// ignore threads outside the volume</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">nr_voxels_x</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">nr_voxels_y</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">nr_angles</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// project the voxel (X, Y) onto a coordinate U on the detector line</span>
+<span class="w">        </span><span class="c1">// (full source in Jupyter notebook)</span>
+<span class="w">        </span><span class="kt">float</span><span class="w"> </span><span class="n">U</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">xray_project</span><span class="p">(</span><span class="n">X</span><span class="p">,</span><span class="w"> </span><span class="n">Y</span><span class="p">,</span><span class="w"> </span><span class="n">angles</span><span class="p">[</span><span class="n">i</span><span class="p">],</span><span class="w"> </span><span class="n">src_obj_dist</span><span class="p">,</span><span class="w"> </span><span class="n">obj_det_dist</span><span class="p">);</span>
+
+<span class="w">        </span><span class="c1">// linearly interpolate the value at U from sinogram gridpoints</span>
+<span class="w">        </span><span class="n">volume</span><span class="p">[</span><span class="n">y</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">nr_voxels_x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">x</span><span class="p">]</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">linearly_interpolate</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">nr_pixels</span><span class="p">,</span><span class="w"> </span><span class="n">U</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>In this CUDA function, aimed at backprojection for circular fanbeam CT, arrays <code class="code highlight python docutils literal highlight-python"><span class="nb">float</span> <span class="o">*</span> <span class="n">volume</span></code> and <code class="code highlight python docutils literal highlight-python"><span class="nb">float</span> <span class="o">*</span> <span class="n">sinogram</span></code> are passed as arguments, as well as some geometry parameters of the 2D reconstruction problem. The arrays reside on the GPU in global memory.</p>
+<p>Each parallel thread of this CUDA kernel loops over all angles in the sinogram to compute the value at a single voxel <span class="math notranslate nohighlight">\((X, Y)\)</span> in the 2D volume. This uses a voxel-driven backprojection approach. The reader is referred to Hansen <em>et al.</em><a class="footnote-reference brackets" href="#footcite-hansen-2021" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a> (Chapter 9) for an explanation of X-ray projection.</p>
+<p>Importantly, CUDA kernels enable a matrix-free approach of computing the sinogram
+from the volume, or vice versa. A projection matrix is never explicitly formed in memory thanks to its coefficients being computed on-the-fly in the CUDA function.</p>
+</section>
+<section id="kernelkit-kernel">
+<h2>2. <code class="code highlight python docutils literal highlight-python"><span class="n">kernelkit</span><span class="o">.</span><span class="n">Kernel</span></code><a class="headerlink" href="#kernelkit-kernel" title="Link to this heading">#</a></h2>
+<p>To launch CUDA kernels from Python, like the one above, KernelKit provides <code class="code highlight python docutils literal highlight-python"><span class="n">Kernel</span></code> classes. These are thin wrappers that use <a class="extlink-cupy reference external" href="https://docs.cupy.dev/en/stable/reference/generated/cupy.RawModule.html">cupy.RawModule</a> for compilation of the CUDA source code, as well as argument passing. The following example <code class="code highlight python docutils literal highlight-python"><span class="n">FanBp</span></code> provides this for the fanbeam example above.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">FanBp</span><span class="p">(</span><span class="n">kernelkit</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">BaseKernel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fanbeam backprojection for circular geometry.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">cuda_source</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span><span class="s2">&quot;fan_bp.cu&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">cuda_source</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">compile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compile</span><span class="p">((</span><span class="s2">&quot;fan_bp&quot;</span><span class="p">,))</span>
+
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">volume</span><span class="p">:</span> <span class="n">cp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">:</span> <span class="n">cp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                 <span class="n">angles</span><span class="p">:</span> <span class="n">cp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">src_dist</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">det_dist</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+        <span class="c1"># here we retrieve a function using CuPy</span>
+        <span class="n">fan_bp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_module</span><span class="o">.</span><span class="n">get_function</span><span class="p">(</span><span class="s2">&quot;fan_bp&quot;</span><span class="p">)</span>
+
+        <span class="c1"># calling the module launches the kernel from the code example above</span>
+        <span class="n">fan_bp</span><span class="p">(</span>
+            <span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">),</span>                                                <span class="c1"># CUDA threads</span>
+            <span class="p">(</span><span class="n">volume</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">//</span> <span class="mi">32</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">volume</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">//</span> <span class="mi">32</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>  <span class="c1"># CUDA blocks</span>
+            <span class="p">(</span>                                                        <span class="c1"># arguments</span>
+                <span class="n">volume</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">angles</span><span class="p">),</span> <span class="o">*</span><span class="n">volume</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>  <span class="c1"># width, height, det_count</span>
+                <span class="n">cp</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">det_spacing</span><span class="p">),</span> <span class="n">cp</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">src_dist</span><span class="p">),</span> <span class="n">cp</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">det_dist</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+</pre></div>
+</div>
+<p>The <code class="code highlight python docutils literal highlight-python"><span class="fm">__call__</span><span class="p">(</span><span class="o">...</span><span class="p">)</span></code> enables us to invoke <code class="code highlight python docutils literal highlight-python"><span class="n">FanBp</span></code> similarly to a function. In this case, it will launch the CUDA kernel with 32-by-32 sized thread blocks. Each thread block thus processes a small part of the <code class="code highlight python docutils literal highlight-python"><span class="nb">input</span></code> volume.</p>
+<p>Although unpractical, one would already be able to use a kernel directly in a backprojection algorithm. Suppose we would have a data file <cite>sinogram.npy</cite>, now <code class="code highlight python docutils literal highlight-python"><span class="n">FanBp</span></code> can be used like so:</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">output</span> <span class="o">=</span> <span class="n">cp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">cp</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<span class="n">data</span>   <span class="o">=</span> <span class="n">cp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s1">&#39;sinogram.npy&#39;</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">cp</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<span class="n">fan_bp</span> <span class="o">=</span> <span class="n">FanBp</span><span class="p">()</span>
+<span class="n">fan_bp</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>
+<span class="n">fan_bp</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">])</span>  <span class="c1"># geometry omitted in this example</span>
+<span class="c1"># the kernel has written in `output`</span>
+</pre></div>
+</div>
+<p>Practically, kernel classes like the above need to be more extensive, for instance to check the validity of the arguments, or to prepare the C++ code before compilation.</p>
+</section>
+<section id="kernelkit-projector">
+<h2>3. <code class="code highlight python docutils literal highlight-python"><span class="n">kernelkit</span><span class="o">.</span><span class="n">Projector</span></code><a class="headerlink" href="#kernelkit-projector" title="Link to this heading">#</a></h2>
+<p><code class="code highlight python docutils literal highlight-python"><span class="n">Projector</span></code> objects are a KernelKit concept to streamline computing reconstructions using kernels. Often, additional memory management and geometry computations are required around the execution of a kernel, which can be conveniently handled in a projector object. A projector can furthermore help recycle allocated memory so that repeated execution of the same kernel are more efficient.</p>
+<p>In the following simplified example, we introduce a <cite>FanbeamBackProjector</cite>. This projector splits the sinogram into chunks before uploading them to GPU. This enables reconstruction with large quantities of sinogram data without exceeding the GPU memory capacity.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">FanbeamBackProjector</span><span class="p">(</span><span class="n">kernelkit</span><span class="o">.</span><span class="n">BaseProjector</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Chunking backprojection for a circular 2D geometry.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nr_chunks</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">FanbeamProjector</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span> <span class="o">=</span> <span class="n">FanBp</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="n">nr_chunks</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_nr_chunks</span> <span class="o">=</span> <span class="n">nr_chunks</span>
+
+    <span class="c1"># [getters and setters are removed for brevity]</span>
+
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># split the projection indices and the geometry angles in chunks</span>
+        <span class="n">inds</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array_split</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_geom</span><span class="p">[</span><span class="s1">&#39;angles&#39;</span><span class="p">])),</span>
+                              <span class="bp">self</span><span class="o">.</span><span class="n">_nr_chunks</span><span class="p">)</span>
+        <span class="n">angles</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array_split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_geom</span><span class="p">[</span><span class="s1">&#39;angles&#39;</span><span class="p">],</span>
+                                <span class="bp">self</span><span class="o">.</span><span class="n">_nr_chunks</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">inds</span><span class="p">,</span> <span class="n">angles</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">inds</span><span class="p">,</span> <span class="n">angles</span><span class="p">):</span>  <span class="c1"># chunk-by-chunk</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Uploading and backprojecting [</span><span class="si">{</span><span class="n">inds</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">inds</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">)...&quot;</span><span class="p">)</span>
+
+            <span class="c1"># call the `FanBp()` kernel that we wrote in section 2.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="p">,</span>
+                <span class="n">cp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">projections</span><span class="p">[</span><span class="n">inds</span><span class="p">]),</span>  <span class="c1"># upload</span>
+                <span class="n">angles</span><span class="p">,</span>                              <span class="c1"># angular subset</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_geom</span><span class="p">[</span><span class="s1">&#39;det_spacing&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_geom</span><span class="p">[</span><span class="s1">&#39;src_obj_dist&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_geom</span><span class="p">[</span><span class="s1">&#39;obj_det_dist&#39;</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>In the <code class="code highlight python docutils literal highlight-python"><span class="fm">__call__</span><span class="p">()</span></code> of this projector, <code class="code highlight python docutils literal highlight-python"><span class="bp">self</span><span class="o">.</span><span class="n">volume</span></code> is retained on the
+GPU, while <code class="code highlight python docutils literal highlight-python"><span class="n">cp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">projections</span><span class="p">[</span><span class="n">inds</span><span class="p">])</span></code> uploads a new angular chunk of the
+sinogram data. The projector can be used in the following example:</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="c1"># upload and backproject in 7 chunks</span>
+<span class="n">bp</span> <span class="o">=</span> <span class="n">FanbeamBackProjector</span><span class="p">(</span><span class="n">nr_chunks</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+<span class="n">bp</span><span class="o">.</span><span class="n">volume</span> <span class="o">=</span> <span class="n">volume</span>
+<span class="n">bp</span><span class="o">.</span><span class="n">projections</span> <span class="o">=</span> <span class="n">projs</span>
+<span class="n">bp</span><span class="o">.</span><span class="n">projection_geometry</span> <span class="o">=</span> <span class="p">{</span> <span class="o">...</span> <span class="p">}</span>
+<span class="n">bp</span><span class="p">()</span>  <span class="c1"># invokes __call__</span>
+<span class="c1"># the kernel has written in `output`</span>
+</pre></div>
+</div>
+<section id="further-reading">
+<h3>Further reading<a class="headerlink" href="#further-reading" title="Link to this heading">#</a></h3>
+<p>We’ve explained the steps between CUDA kernel that computes the backprojection and the Python X-ray transform algorithm.</p>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../reference/api_summary.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">API Summary</p>
+      </div>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cuda-sources">1. CUDA sources</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#kernelkit-kernel">2. <code class="code highlight python docutils literal highlight-python"><span class="n">kernelkit</span><span class="o">.</span><span class="n">Kernel</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#kernelkit-projector">3. <code class="code highlight python docutils literal highlight-python"><span class="n">kernelkit</span><span class="o">.</span><span class="n">Projector</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#further-reading">Further reading</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Adriaan Graas
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2023, ASTRA Toolbox &amp; ASTRA Toolbox contributors.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

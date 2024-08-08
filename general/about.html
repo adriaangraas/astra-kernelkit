@@ -1,0 +1,465 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" data-theme="light">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>About / FAQ &#8212; ASTRA KernelKit</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "light";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=a3416100" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=6414af87" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../_static/documentation_options.js?v=c5f1023d"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'general/about';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Geometries" href="../user_guide/geometries.html" />
+    <link rel="prev" title="Tomographic projectors" href="tomography.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="light">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Pre-release version.</div>
+</aside>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">ASTRA KernelKit</p>
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tomography.html">X-ray CT projectors</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">About / FAQ</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/geometries.html">Geometries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/projectors.html">Projectors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/api_summary.html">API Summary</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/concepts.html">KernelKit concepts</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/adriaangraas/astra-kernelkit" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>About / FAQ</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-does-kernelkit-work">How does KernelKit work?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#astra-kernelkit-or-astra-toolbox">ASTRA KernelKit or ASTRA Toolbox?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#why-cupy">Why CuPy?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#is-kernelkit-compatible-with">Is KernelKit compatible with …?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#i-found-an-issue-how-can-i-contribute">I found an issue / How can I contribute?</a></li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="about-faq">
+<span id="differences"></span><h1>About / FAQ<a class="headerlink" href="#about-faq" title="Link to this heading">#</a></h1>
+<p>ASTRA KernelKit is a side-project of ASTRA Toolbox, and aims to provide
+more flexible access to the tomographic projectors and kernels used in ASTRA.
+It is a minimalistic standalone library.</p>
+<section id="how-does-kernelkit-work">
+<h2>How does KernelKit work?<a class="headerlink" href="#how-does-kernelkit-work" title="Link to this heading">#</a></h2>
+<p>Tomographic projectors are often written in a low-level language, like
+C/C++, and use NVIDIA CUDA for acceleration on graphical processing units (GPUs).</p>
+<p>ASTRA KernelKit makes it easy to use Python to access and modify these
+projectors. It does so by using CuPy, which in turn uses NVRTC,
+the NVIDIA runtime compiler, to compile CUDA kernels during the Python script.</p>
+<figure class="align-default" id="id3">
+<img alt="A comparison of KernelKit with ASTRA Toolbox and Tomosipo." src="../_images/idea.png" />
+<figcaption>
+<p><span class="caption-text">The comparison of KernelKit with ASTRA Toolbox and Tomosipo is explained
+in the paper publication associated with the software package <a class="footnote-reference brackets" href="#footcite-graas-2024" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>.</span><a class="headerlink" href="#id3" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+</section>
+<section id="astra-kernelkit-or-astra-toolbox">
+<h2>ASTRA KernelKit or ASTRA Toolbox?<a class="headerlink" href="#astra-kernelkit-or-astra-toolbox" title="Link to this heading">#</a></h2>
+<p>KernelKit:</p>
+<ul class="simple">
+<li><p>directly compile and call ASTRA Toolbox kernels in your Python code;</p></li>
+<li><p>have more flexibility toward data axis order, data types, and
+memory layout, helping to get better performance;</p></li>
+<li><p>customize ASTRA Toolbox kernels, for, e.g., machine learning applications.</p></li>
+<li><p>integrate kernels with advanced CUDA, such as unified memory and streams.</p></li>
+</ul>
+<p>Toolbox:</p>
+<ul class="simple">
+<li><p>pre-implemented algorithms (e.g., SIRT, CGLS, FBP, etc.);</p></li>
+<li><p>larger variety of kernels and functionalities;</p></li>
+<li><p>multi-GPU support out of the box;</p></li>
+<li><p>Windows and MatLab support.</p></li>
+</ul>
+</section>
+<section id="why-cupy">
+<h2>Why CuPy?<a class="headerlink" href="#why-cupy" title="Link to this heading">#</a></h2>
+<p>A frequently asked question is why KernelKit is based on CuPy, and not
+any other GPU array library such as PyTorch or PyCUDA.</p>
+<p>A main feature of CuPy is that it transparently exposes advanced CUDA
+functionality to Python, such as the NVIDIA run-time compiler, but also
+streams, graphs, CUDA arrays, and texture memory. This allows KernelKit to
+be written with a minimalistic code base and without shipping binary code.</p>
+</section>
+<section id="is-kernelkit-compatible-with">
+<h2>Is KernelKit compatible with …?<a class="headerlink" href="#is-kernelkit-compatible-with" title="Link to this heading">#</a></h2>
+<p><strong>ASTRA Toolbox</strong>: KernelKit does not aim to be a drop-in replacement for ASTRA
+Toolbox. There are <code class="docutils literal notranslate"><span class="pre">ForwardProjector</span></code> and <code class="docutils literal notranslate"><span class="pre">BackProjector</span></code> ASTRA Toolbox
+compatible classes available, making it easy to cross-test
+implementations with the ASTRA Toolbox.</p>
+<p><strong>Tomosipo</strong>: Work in progress in a <a class="reference external" href="https://github.com/adriaangraas/tomosipo/tree/kernelkit-integration">Github branch</a>.
+Here a KernelKit operator can be created with <code class="code highlight python docutils literal highlight-python"><span class="n">ts</span><span class="o">.</span><span class="n">operator</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">backend</span><span class="o">=</span><span class="s1">&#39;kernelkit&#39;</span><span class="p">)</span></code>.</p>
+<p><strong>PyTorch</strong>: Torch tensors can be converted to CuPy arrays and vice versa
+efficiently, without incurring copies. See <a class="reference internal" href="../reference/_autosummary/kernelkit.torch_support.AutogradOperator.html#kernelkit.torch_support.AutogradOperator" title="kernelkit.torch_support.AutogradOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">kernelkit.torch_support.AutogradOperator</span></code></a>.</p>
+</section>
+<section id="i-found-an-issue-how-can-i-contribute">
+<h2>I found an issue / How can I contribute?<a class="headerlink" href="#i-found-an-issue-how-can-i-contribute" title="Link to this heading">#</a></h2>
+<p>Contributions welcome! Please report any issues on the Github issue tracker.</p>
+<div class="docutils container" id="id2">
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="footcite-graas-2024" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
+<p>Adriaan B.M. Graas, Willem Jan Palenstijn, Ben van Werkhoven, and Felix Lucka. Astra kernelkit: gpu-accelerated projectors for computed tomography using cupy. <em>Applied Mathematics for Modern Challenges</em>, 2024.</p>
+</aside>
+</aside>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="tomography.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Tomographic projectors</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../user_guide/geometries.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Geometries</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-does-kernelkit-work">How does KernelKit work?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#astra-kernelkit-or-astra-toolbox">ASTRA KernelKit or ASTRA Toolbox?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#why-cupy">Why CuPy?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#is-kernelkit-compatible-with">Is KernelKit compatible with …?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#i-found-an-issue-how-can-i-contribute">I found an issue / How can I contribute?</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Adriaan Graas
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2023, ASTRA Toolbox &amp; ASTRA Toolbox contributors.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

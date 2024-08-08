@@ -1,8 +1,0 @@
-/.idea
-*.pyc
-/*.egg-info
-/paper
-/dist
-/docs/_build
-/docs/*/_autosummary
-/docs/doctrees

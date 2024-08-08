@@ -1,0 +1,411 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" data-theme="light">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Tomographic projectors &#8212; ASTRA KernelKit</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "light";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=a3416100" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=6414af87" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../_static/documentation_options.js?v=c5f1023d"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'general/tomography';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="About / FAQ" href="about.html" />
+    <link rel="prev" title="Installation" href="install.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="light">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Pre-release version.</div>
+</aside>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">ASTRA KernelKit</p>
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">X-ray CT projectors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="about.html">About / FAQ</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/geometries.html">Geometries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/projectors.html">Projectors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/api_summary.html">API Summary</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/concepts.html">KernelKit concepts</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/adriaangraas/astra-kernelkit" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Tomographic projectors</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="tomographic-projectors">
+<span id="principles"></span><h1>Tomographic projectors<a class="headerlink" href="#tomographic-projectors" title="Link to this heading">#</a></h1>
+<p>The discretized reconstruction problem of CT can be stated as retrieving the 3D object <span class="math notranslate nohighlight">\(\mathbf x \in \mathbb{R}^{N_x N_y N_z}\)</span> discretized on a voxel grid by solving the linear inverse problem</p>
+<div class="math notranslate nohighlight">
+\[\mathbf y = \mathbf A \mathbf x\]</div>
+<p>where the forward projection <span class="math notranslate nohighlight">\(\mathbf A \colon \mathbf x \mapsto \mathbf y\)</span> represents the X-ray transform, and <span class="math notranslate nohighlight">\(\mathbf y \in \mathbb{R}^{N_\theta N_u N_v}\)</span> denotes the measured projections at <span class="math notranslate nohighlight">\(N_\theta\)</span> angles of an <span class="math notranslate nohighlight">\((N_u, N_v)\)</span>-sized detector. The adjoint, <span class="math notranslate nohighlight">\(\mathbf A^T \colon \mathbf y \mapsto \mathbf x\)</span>, is the backprojection. In practice, <span class="math notranslate nohighlight">\(\mathbf y\)</span> is often not the direct quantity measured by a detector in an X-ray setup, but is instead obtained after several preprocessing steps of the raw measurement data (e.g., using a <span class="math notranslate nohighlight">\(\log\)</span>-transform to invert Beer-Lambert’s law<a class="footnote-reference brackets" href="#footcite-kak-slaney-2001" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>).</p>
+<p>Several discretization strategies can be considered to construct <span class="math notranslate nohighlight">\(\mathbf A\)</span> as well as its transpose <span class="math notranslate nohighlight">\(\mathbf A^T\)</span><a class="footnote-reference brackets" href="#footcite-hansen-2021" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#footcite-xu-2006" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a>. Each of the <span class="math notranslate nohighlight">\(N_u N_vN_\theta\)</span> rows of <span class="math notranslate nohighlight">\(\mathbf A\)</span>, c.q.columns of <span class="math notranslate nohighlight">\(\mathbf A^T\)</span>, discretizes a single line integral associated with the X-ray transform. That is, it chooses interpolation weights to approximate the integral</p>
+<div class="math notranslate nohighlight">
+\[[\mathcal Ax]_{u, v, \theta} = \int_{-\infty}^\infty x\left(s_\theta + (d_{\theta, u, v} - s_\theta)t\right)\,\text{d}t,\]</div>
+<p>which describes the straight line from a point source <span class="math notranslate nohighlight">\(s_\theta\)</span> to a detector pixel midpoint <span class="math notranslate nohighlight">\(d_{\theta, u, v}\)</span> through the volume <span class="math notranslate nohighlight">\(x\)</span>. For 3D projectors, ASTRA estimates the line integral above with the Joseph kernel<a class="footnote-reference brackets" href="#footcite-joseph1982" id="id4" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a>. In this <em>ray-driven</em> approach, each integration point takes a trilinearly interpolated value from neighboring points on the voxel grid. Importantly, the line is modeled such that it precisely arrives at a detector pixel’s midpoint, and, hence, no re-interpolation is needed in the sinogram. Conversely, during a <em>voxel-driven</em> backprojection, a bilinear interpolation at each angle of the sinogram sums up to the voxel’s value<a class="footnote-reference brackets" href="#footcite-papenhausen-2011" id="id5" role="doc-noteref"><span class="fn-bracket">[</span>5<span class="fn-bracket">]</span></a>. In this case, all lines of backprojection go precisely through the voxel’s center, and now re-interpolation is avoided in the volume. The reader is referred to Hansen <em>et al.</em><a class="footnote-reference brackets" href="#footcite-hansen-2021" id="id6" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a> (Chapter 9) for interpolation formulae.</p>
+<p>Due to the difference in forward and backward lines, the 3D conebeam FP and BP projectors in ASTRA are <em>unmatched</em>, i.e., the backprojector is not the exact transpose of the forward projector. The approach, however, is advantageous for an implementation on GPUs. All parallel threads (discussed in Section ref{sec:kernel}) are independent of each other, which avoids potential race conditions, i.e., when two threads would write to the same memory simultaneously<a class="footnote-reference brackets" href="#footcite-despres-2017" id="id7" role="doc-noteref"><span class="fn-bracket">[</span>6<span class="fn-bracket">]</span></a>. On the other hand, unmatched projectors lead to nonconvergence in iterative algorithms due to a nonsymmetry of the iteration matrix<a class="footnote-reference brackets" href="#footcite-dong-2019" id="id8" role="doc-noteref"><span class="fn-bracket">[</span>7<span class="fn-bracket">]</span></a>. In the presence of noise, this does not always pose a problem<a class="footnote-reference brackets" href="#footcite-zeng-2000" id="id9" role="doc-noteref"><span class="fn-bracket">[</span>8<span class="fn-bracket">]</span></a>.</p>
+<div class="docutils container" id="id10">
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="footcite-kak-slaney-2001" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
+<p>Avinash C. Kak and Malcolm Slaney. <em>Principles of computerized tomographic imaging</em>. Society for Industrial and Applied Mathematics, Philadelphia, 2001. ISBN 089871494X 9780898714944.</p>
+</aside>
+<aside class="footnote brackets" id="footcite-hansen-2021" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id2">1</a>,<a role="doc-backlink" href="#id6">2</a>)</span>
+<p>Per Christian Hansen, Jakob Jørgensen, and William R. B. Lionheart. <em>Computed Tomography: Algorithms, Insight, and Just Enough Theory</em>. Society for Industrial and Applied Mathematics, Philadelphia, PA, 2021.</p>
+</aside>
+<aside class="footnote brackets" id="footcite-xu-2006" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">3</a><span class="fn-bracket">]</span></span>
+<p>Fang Xu and K. Mueller. A comparative study of popular interpolation and integration methods for use in computed tomography. In <em>3rd IEEE International Symposium on Biomedical Imaging: Nano to Macro, 2006.</em>, volume, 1252–1255. 2006.</p>
+</aside>
+<aside class="footnote brackets" id="footcite-joseph1982" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">4</a><span class="fn-bracket">]</span></span>
+<p>Peter M. Joseph. An improved algorithm for reprojecting rays through pixel images. <em>IEEE Transactions on Medical Imaging</em>, 1(3):192–196, 1982.</p>
+</aside>
+<aside class="footnote brackets" id="footcite-papenhausen-2011" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">5</a><span class="fn-bracket">]</span></span>
+<p>Eric Papenhausen, Ziyi Zheng, and Klaus Mueller. Gpu-accelerated back-projection revisited : squeezing performance by careful tuning. 2011.</p>
+</aside>
+<aside class="footnote brackets" id="footcite-despres-2017" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id7">6</a><span class="fn-bracket">]</span></span>
+<p>Philippe Després and Xun Jia. A review of gpu-based medical image reconstruction. <em>Physica Medica</em>, 42:76–92, 2017.</p>
+</aside>
+<aside class="footnote brackets" id="footcite-dong-2019" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id8">7</a><span class="fn-bracket">]</span></span>
+<p>Yiqiu Dong, Per Christian Hansen, Michiel E. Hochstenbach, and Nicolai André Brogaard Riis. Fixing nonconvergence of algebraic iterative reconstruction with an unmatched backprojector. <em>SIAM Journal on Scientific Computing</em>, 41(3):A1822–A1839, 2019.</p>
+</aside>
+<aside class="footnote brackets" id="footcite-zeng-2000" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id9">8</a><span class="fn-bracket">]</span></span>
+<p>G.L. Zeng and G.T. Gullberg. Unmatched projector/backprojector pairs in an iterative reconstruction algorithm. <em>IEEE Transactions on Medical Imaging</em>, 19(5):548–555, 2000.</p>
+</aside>
+</aside>
+</div>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="install.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Installation</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="about.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">About / FAQ</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Adriaan Graas
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2023, ASTRA Toolbox &amp; ASTRA Toolbox contributors.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

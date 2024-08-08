@@ -1,0 +1,560 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" data-theme="light">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>API Summary &#8212; ASTRA KernelKit</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "light";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=a3416100" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=6414af87" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../_static/documentation_options.js?v=c5f1023d"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/api_summary';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="KernelKit low-level concepts explained in code" href="../tutorials/concepts.html" />
+    <link rel="prev" title="Projectors" href="../user_guide/projectors.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="light">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Pre-release version.</div>
+</aside>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">ASTRA KernelKit</p>
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../general/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../general/tomography.html">X-ray CT projectors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../general/about.html">About / FAQ</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/geometries.html">Geometries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/projectors.html">Projectors</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">API Summary</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/concepts.html">KernelKit concepts</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/adriaangraas/astra-kernelkit" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>API Summary</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#geometries">Geometries</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#kernels">Kernels</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#projectors">Projectors</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#algorithms">Algorithms</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#miscellaneous">Miscellaneous</a></li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="api-summary">
+<span id="id1"></span><h1>API Summary<a class="headerlink" href="#api-summary" title="Link to this heading">#</a></h1>
+<section id="geometries">
+<h2>Geometries<a class="headerlink" href="#geometries" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.VolumeGeometry.html#kernelkit.VolumeGeometry" title="kernelkit.VolumeGeometry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.VolumeGeometry</span></code></a>(shape, voxel_size, ...)</p></td>
+<td><p>Geometry for a single 3D reconstruction object.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.ProjectionGeometry.html#kernelkit.ProjectionGeometry" title="kernelkit.ProjectionGeometry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.ProjectionGeometry</span></code></a>(...[, u, v, ...])</p></td>
+<td><p>Single 3D projection with one source and one detector.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.Beam.html#kernelkit.Beam" title="kernelkit.Beam"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.Beam</span></code></a>(value[, names, module, ...])</p></td>
+<td><p>Beam type.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.resolve_volume_geometry.html#kernelkit.resolve_volume_geometry" title="kernelkit.resolve_volume_geometry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.resolve_volume_geometry</span></code></a>([shape, ...])</p></td>
+<td><p>Resolves a <cite>VolumeGeometry</cite> given partial parameters.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.experimental.suggest_volume_extent.html#kernelkit.experimental.suggest_volume_extent" title="kernelkit.experimental.suggest_volume_extent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.experimental.suggest_volume_extent</span></code></a>(...)</p></td>
+<td><p>Suggest a volume extent for a given geometry.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.Detector.html#kernelkit.Detector" title="kernelkit.Detector"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.Detector</span></code></a>(rows, cols, pixel_height, ...)</p></td>
+<td><p>Detector specifications.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.rotate.html#kernelkit.rotate" title="kernelkit.rotate"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.rotate</span></code></a>(geom[, roll, pitch, yaw])</p></td>
+<td><p>Creates a new geometry by rotation.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.rotate_.html#kernelkit.rotate_" title="kernelkit.rotate_"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.rotate_</span></code></a>(geom[, roll, pitch, yaw])</p></td>
+<td><p>In-place rotation of a geometry.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.scale.html#kernelkit.scale" title="kernelkit.scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.scale</span></code></a>(geom, factor)</p></td>
+<td><p>Creates a new projection geometry by factor.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.scale_.html#kernelkit.scale_" title="kernelkit.scale_"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.scale_</span></code></a>(geom, factor)</p></td>
+<td><p>In-place factor of geometry or geometry sequence.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.shift.html#kernelkit.shift" title="kernelkit.shift"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.shift</span></code></a>(geom, vector)</p></td>
+<td><p>Creates a new geometry by a 3D shift.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.shift_.html#kernelkit.shift_" title="kernelkit.shift_"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.shift_</span></code></a>(geom, vector)</p></td>
+<td><p>In-place shift of a geometry or geometry sequence.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="kernels">
+<h2>Kernels<a class="headerlink" href="#kernels" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.kernel.BaseKernel.html#kernelkit.kernel.BaseKernel" title="kernelkit.kernel.BaseKernel"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.kernel.BaseKernel</span></code></a>(cuda_source)</p></td>
+<td><p>Abstract base class for CUDA kernels</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.kernel.copy_to_texture.html#kernelkit.kernel.copy_to_texture" title="kernelkit.kernel.copy_to_texture"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.kernel.copy_to_texture</span></code></a>(array[, ...])</p></td>
+<td><p>Creates a single-channel 2D/3D texture object of type float from a CuPy array.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.kernel.copy_to_symbol.html#kernelkit.kernel.copy_to_symbol" title="kernelkit.kernel.copy_to_symbol"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.kernel.copy_to_symbol</span></code></a>(module, ...)</p></td>
+<td><p>Copy array to address on GPU, e.g. constant memory.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.kernels.VoxelDrivenConeBP.html#kernelkit.kernels.VoxelDrivenConeBP" title="kernelkit.kernels.VoxelDrivenConeBP"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.kernels.VoxelDrivenConeBP</span></code></a>([...])</p></td>
+<td><p>Voxel-driven conebeam backprojection kernel.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.kernels.RayDrivenConeFP.html#kernelkit.kernels.RayDrivenConeFP" title="kernelkit.kernels.RayDrivenConeFP"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.kernels.RayDrivenConeFP</span></code></a>([...])</p></td>
+<td><p>Ray-driven conebeam forward projection kernel.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="projectors">
+<h2>Projectors<a class="headerlink" href="#projectors" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.BaseProjector.html#kernelkit.BaseProjector" title="kernelkit.BaseProjector"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.BaseProjector</span></code></a>()</p></td>
+<td><p>Interface-like base class for projectors.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.BackProjector.html#kernelkit.BackProjector" title="kernelkit.BackProjector"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.BackProjector</span></code></a>([kernel, texture_type])</p></td>
+<td><p>Backprojector for conebeam geometry</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.ForwardProjector.html#kernelkit.ForwardProjector" title="kernelkit.ForwardProjector"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.ForwardProjector</span></code></a>([kernel, ...])</p></td>
+<td><p>Cone-beam forward projector.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.toolbox_support.ForwardProjector.html#kernelkit.toolbox_support.ForwardProjector" title="kernelkit.toolbox_support.ForwardProjector"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.toolbox_support.ForwardProjector</span></code></a>()</p></td>
+<td><p>Adapter for ASTRA forward projectors.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.toolbox_support.BackProjector.html#kernelkit.toolbox_support.BackProjector" title="kernelkit.toolbox_support.BackProjector"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.toolbox_support.BackProjector</span></code></a>()</p></td>
+<td><p>Adapter for ASTRA backprojectors.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="algorithms">
+<h2>Algorithms<a class="headerlink" href="#algorithms" title="Link to this heading">#</a></h2>
+<p>Reference algorithms:</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.bp.html#kernelkit.bp" title="kernelkit.bp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.bp</span></code></a>(projections, ...[, filter, ...])</p></td>
+<td><p>X-ray backprojection.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.fp.html#kernelkit.fp" title="kernelkit.fp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.fp</span></code></a>(volume, projection_geometry, ...)</p></td>
+<td><p>X-ray forward projection.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.fdk.html#kernelkit.fdk" title="kernelkit.fdk"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.fdk</span></code></a>(projections, ...[, filter])</p></td>
+<td><p>Feldkamp-Davis-Kress algorithm for conebeam geometry.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.sirt.html#kernelkit.sirt" title="kernelkit.sirt"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.sirt</span></code></a>(projections, ...[, iters, ...])</p></td>
+<td><p>Simultaneous Iterative Reconstruction Technique.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Operator-style algorithm building blocks:</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.BaseOperator.html#kernelkit.BaseOperator" title="kernelkit.BaseOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.BaseOperator</span></code></a>()</p></td>
+<td><p>A mathematical operator.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.ProjectorOperator.html#kernelkit.ProjectorOperator" title="kernelkit.ProjectorOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.ProjectorOperator</span></code></a>(projector, ...)</p></td>
+<td><p>An operator <span class="math notranslate nohighlight">\(A : X \to Y\)</span> using a forward and backprojector.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.XrayTransform.html#kernelkit.XrayTransform" title="kernelkit.XrayTransform"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.XrayTransform</span></code></a>(projection_geometry, ...)</p></td>
+<td><p>A mathematical operator representing the X-ray transform.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="miscellaneous">
+<h2>Miscellaneous<a class="headerlink" href="#miscellaneous" title="Link to this heading">#</a></h2>
+<p>Helpers for cone and Fourier-based algorithms:</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.processing.filter.html#kernelkit.processing.filter" title="kernelkit.processing.filter"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.processing.filter</span></code></a>(projections[, ...])</p></td>
+<td><p>Filter in Fourier domain</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.processing.preweight.html#kernelkit.processing.preweight" title="kernelkit.processing.preweight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.processing.preweight</span></code></a>(projections, ...)</p></td>
+<td><p>Pixelwise rescaling to compensate for ray length in conebeam images</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Helpers for pitched 2D memory:</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.data.ispitched.html#kernelkit.data.ispitched" title="kernelkit.data.ispitched"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.data.ispitched</span></code></a>(array)</p></td>
+<td><p>Returns <cite>True</cite> if the array is pitched, <cite>False</cite> otherwise.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_autosummary/kernelkit.data.aspitched.html#kernelkit.data.aspitched" title="kernelkit.data.aspitched"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.data.aspitched</span></code></a>(array[, xp])</p></td>
+<td><p>Pads array to pitched shape and returns a view in original shape.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Helpers for PyTorch:</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="_autosummary/kernelkit.torch_support.AutogradOperator.html#kernelkit.torch_support.AutogradOperator" title="kernelkit.torch_support.AutogradOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kernelkit.torch_support.AutogradOperator</span></code></a>(...)</p></td>
+<td><p>Autograd function for <cite>Operator</cite> objects.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../user_guide/projectors.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Projectors</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../tutorials/concepts.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">KernelKit low-level concepts explained in code</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#geometries">Geometries</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#kernels">Kernels</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#projectors">Projectors</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#algorithms">Algorithms</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#miscellaneous">Miscellaneous</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Adriaan Graas
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2023, ASTRA Toolbox &amp; ASTRA Toolbox contributors.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>
