@@ -1,11 +1,19 @@
 ## The ASTRA KernelKit project
 ASTRA KernelKit is part of the `ASTRA Toolbox` project.
 
-[![Documentation Status](https://readthedocs.org/projects/astra-kernelkit/badge/?version=latest)](https://astra-kernelkit.readthedocs.io/en/latest/?badge=latest)
+
+> [!NOTE] 
+> Last update is August 8th to verison 1.0.0rc2. This contains updated 3D conebeam
+> forward and backprojectors and some documentation. Parallel beam and more examples
+> are to follow soon.
+> 
+> Find documentation at [https://kernelkit.gra.as/](https://kernelkit.gra.as/).
+> 
+<!--
 [![PyPI version](https://badge.fury.io/py/astra-kernelkit.svg)](https://badge.fury.io/py/astra-kernelkit)
-[![Build Status](https://travis-ci.com/astra-kernelkit/astra-kernelkit.svg?branch=master)](https://travis-ci.com/astra-kernelkit/astra-kernelkit)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/astra-kernelkit)](https://pypi.org/project/astra-kernelkit/)
 [![PyPI - License](https://img.shields.io/pypi/l/astra-kernelkit)]()
+-->
 
 # ASTRA KernelKit
 
@@ -20,10 +28,10 @@ using [CuPy](https://cupy.dev/).
 
 ## Installation
 KernelKit depends on [CuPy](https://docs.cupy.dev/en/stable/install.html), which
-we recommend to be installed first. Refer to our [installation instructions](https://kernelkit.readthedocs.io/en/latest/installation.html).
+we recommend to be installed first. Refer to our [installation instructions](https://kernelkit.gra.as/general/install.html).
 
 ## Getting started
-See the [documentation](https://astra-kernelkit.readthedocs.io/en/latest/) for more information.
+See the [documentation](https://kernelkit.gra.as) for more information.
 
 ## License
 The ASTRA KernelKit and ASTRA Toolbox projects are freely available and open source under the GPLv3 license.
