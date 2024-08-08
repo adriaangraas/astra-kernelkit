@@ -12,6 +12,7 @@ p = pathlib.Path(__file__).parents[1].resolve()
 sys.path.insert(0, p.as_posix())
 
 from kernelkit import toolbox_support
+from kernelkit import torch_support
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information

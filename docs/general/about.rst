@@ -66,7 +66,7 @@ implementations with the ASTRA Toolbox.
 Here a KernelKit operator can be created with :python:`ts.operator(..., backend='kernelkit')`.
 
 **PyTorch**: Torch tensors can be converted to CuPy arrays and vice versa
-efficiently, without incurring copies.
+efficiently, without incurring copies. See :class:`kernelkit.torch_support.AutogradOperator`.
 
 I found an issue / How can I contribute?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

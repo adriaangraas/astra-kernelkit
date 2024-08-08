@@ -11,17 +11,17 @@ Overview
 
 Currently added are the 3D forward projector and backprojectors.
 
-+--------------------------------+---------------------------------------------------------------------------------+
-| Forward projectors             |                                                                                 |
-+================================+=================================================================================+
-| ``kernelkit.ForwardProjector`` | A projector for a list-based scan geometry and single 3D reconstruction volume. |
-+--------------------------------+---------------------------------------------------------------------------------+
++-------------------------------------+---------------------------------------------------------------------------------+
+| Forward projectors                  |                                                                                 |
++=====================================+=================================================================================+
+| :class:`kernelkit.ForwardProjector` | A projector for a list-based scan geometry and single 3D reconstruction volume. |
++-------------------------------------+---------------------------------------------------------------------------------+
 
-+------------------------------+-----------------------------------------------------------------------------------+
-| Backprojectors               |                                                                                   |
-+==============================+===================================================================================+
-| ``kernelkit.BackProjector``  | A backprojector for a list-based scan geometry and single 3D volume.              |
-+------------------------------+-----------------------------------------------------------------------------------+
++-----------------------------------+-----------------------------------------------------------------------------------+
+| Backprojectors                    |                                                                                   |
++===================================+===================================================================================+
+| :class:`kernelkit.BackProjector`  | A backprojector for a list-based scan geometry and single 3D volume.              |
++-----------------------------------+-----------------------------------------------------------------------------------+
 
 Usage
 =====
@@ -30,28 +30,23 @@ Projectors follow a simple interface, with getters, setters and deleters backing
 
 .. code-block::
 
-    fp = kk.ForwardProjector(volume_axes=(0, 1, 2))
+    # 1. Creating a forward projector.
+    #    Passed arguments are used for compiling an optimal kernel.
+    #    Here, the input is set to (z, y, x) axis order.
+    fp = kk.ForwardProjector(volume_axes=(2, 1, 0))
 
-    # 2. Setting attributes is backed by projector intelligence
+    # 2. Setting attributes
     fp.volume_geometry     = vg
-    fp.projection_geometry = [x_proj, y_proj, z_proj]
+    fp.projection_geometry = pg
     fp.volume              = cp.asarray(x, dtype=cp.float32)
     fp.projections         = cp.empty((3, det.rows, det.cols), dtype=cp.float32)
 
     # 3. Calling the object executes the projector
+    #    and stores the output in `projections`.
     fp()
 
-    # 4. Getters allow you to retrieve the object
+    # 4. Attribute getters allow you to retrieve the object
     y = fp.projections
 
-    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
-    axs[0].imshow(cp.asnumpy(y[0]))
-    axs[1].imshow(cp.asnumpy(y[1]))
-    axs[2].imshow(cp.asnumpy(y[2]))
-    plt.show()
 
-    # 5. Deleters will clear GPU memory if there are no further references
-    # del fp.projections
-    cp.get_default_memory_pool().free_all_blocks()
-
-
+A full example is found at :github:`example/tutorials/projectors.ipynb`.

@@ -34,7 +34,7 @@ Option 1: Using PyPI
 
 
 Option 2: using Conda-Forge
-===========================
+---------------------------
 
 If you are using an Anaconda environment, you can install ASTRA KernelKit from the
 `conda-forge <https://conda-forge.org/>`_ channel:
@@ -47,7 +47,7 @@ There are no particular advantages to a conda package.
 
 
 Option 3: from source
-=====================
+---------------------
 
 Installation from source is recommended if you want to contribute to
 the development.

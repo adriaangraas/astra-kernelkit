@@ -16,9 +16,6 @@ position and rotation of the reconstruction volume at the center of the system.
 
 .. _Overview:
 
-Currently supported are a circular geometry and list-based geometry.
-Additional geometries (2D/3D/4D) are welcome.
-
 +--------------------------------------------+-------------------------------------------------------------------+
 | Scan geometries                            |                                                                   |
 +============================================+===================================================================+
@@ -40,11 +37,6 @@ Conventions
 
 These conventions hold throughout for all Python code:
 
-- **Right-handed coordinate system.**
-
-  The :math:`z`-axis points along the axis of rotation (typically vertical), the
-  :math:`x`-axis points (horizontal) to the right, and the :math:`y`-axis
-  points (horizontal) into the page.
 
 - **Vectors are in** :math:`(x, y, z)` **order.**
 
@@ -54,10 +46,15 @@ These conventions hold throughout for all Python code:
 
   Note: data arrays, e.g., :cupy:`cupy.ndarray`, can still use alternative axis orders, such as :math:`(z, y, x)` in ASTRA Toolbox.
 
+- **Right-handed coordinate system.**
+
+  The :math:`z`-axis points along the axis of rotation (typically vertical), the
+  :math:`x`-axis points (horizontal) to the right, and the :math:`y`-axis
+  points (horizontal) into the page.
+
 - **Angles are in radians, and use roll-pitch-yaw (RPY) format.**
 
-  Roll
-  is rotation about the :math:`x`-axis, pitch is rotation about the :math:`y`-axis,
+  Roll is rotation about the :math:`x`-axis, pitch is rotation about the :math:`y`-axis,
   and yaw is rotation about the :math:`z`-axis. We take extrinsic Euler angles, meaning that the
   rotation is applied to the fixed coordinate system.
 

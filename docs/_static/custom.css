@@ -9,9 +9,14 @@
     --pst-font-family-heading: "IBM Plex Sans";
     --pst-color-primary: black;
     --pst-color-inline-code: var(--bs-red);
+    --pst-color-inline-code-links: var(--bs-blue);
     --pst-color-text-muted: #888; /* Example color */
     --fa-font-brands: 'FontAwesome'; /* Ensure this is properly loaded if using FontAwesome */
     --pst-icon-github: "\f09b"; /* Example GitHub icon content from FontAwesome */
+}
+
+a > code {
+    color: var(--bs-blue);
 }
 
 html {
@@ -127,10 +132,6 @@ ul.nav li a.current, ul.nav li a.current:hover {
     align-items: flex-start;
 }
 
-/*code {*/
-/*    color: red;*/
-/*}*/
-
 code.literal {
     border: 0;
 }
@@ -144,11 +145,6 @@ body {
     /*font-family: "Open Sans", sans-serif;*/
     font-size: 1rem;
     /*line-height: 1.5;*/
-}
-
-h1 {
-    color: black !important;
-    font-size: 1.5rem;
 }
 
 h2 {
